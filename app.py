@@ -2,7 +2,7 @@ import streamlit as st
 import tempfile
 import os
 import matplotlib.pyplot as plt
-
+from gradcam import make_gradcam
 from src.predict import predict_leaf
 from src.prediction_history import get_prediction_history, clear_prediction_history
 
@@ -191,6 +191,15 @@ if image_file is not None:
             result, confidence, healthy_probability, diseased_probability = predict_leaf(
                 image_path
             )
+            gradcam_image = make_gradcam(
+                image_path
+            )
+        with st.spinner(
+                "Generating AI visual.."
+            ):
+            gradcam_path = make_gradcam(
+                    image_path
+                )
 
 
         # ----------------------------------------------
@@ -240,15 +249,6 @@ if image_file is not None:
     # ==================================================
     # DELETE TEMPORARY IMAGE
     # ==================================================
-
-    try:
-
-        os.remove(image_path)
-
-    except Exception:
-
-        pass
-
 
     # ==================================================
     # AI ANALYSIS RESULTS
@@ -506,60 +506,152 @@ if image_file is not None:
             fig2
         )
 
+    st.divider()
+
+    st.subheader("🔥 AI Visual Explanation")
+
+    st.write(
+            "Grad-CAM highlights the areas of the leaf that "
+            "contributed most to the model's prediction."
+        )
+
+    gradcam_col1, gradcam_col2 = st.columns(2)
+
+    with gradcam_col1:
+
+        st.markdown("### 🍃 Original Image")
+
+        st.image(
+                image_file,
+                use_container_width=True
+            )
+
+    with gradcam_col2:
+
+        st.markdown("### 🔥 Grad-CAM Heatmap")
+
+        st.image(
+                gradcam_image,
+                use_container_width=True
+            )
+
+    st.markdown("#### 🎨 Attention Guide")
+
+    st.markdown("""
+        <div style="
+            padding: 15px;
+            border-radius: 10px;
+            background-color: #ffffff;
+            border: 1px solid #ddd;
+            color: #222222;
+        ">
+
+        <div style="display:flex; align-items:center; margin-bottom:8px;">
+            <div style="
+                width:20px;
+                height:20px;
+                background-color:red;
+                margin-right:10px;
+                border-radius:4px;
+            "></div>
+            <b>Red</b>&nbsp; — Very high attention
+        </div>
+
+        <div style="display:flex; align-items:center; margin-bottom:8px;">
+            <div style="
+                width:20px;
+                height:20px;
+                background-color:orange;
+                margin-right:10px;
+                border-radius:4px;
+            "></div>
+            <b>Orange / Yellow</b>&nbsp; — High attention
+        </div>
+
+        <div style="display:flex; align-items:center; margin-bottom:8px;">
+            <div style="
+                width:20px;
+                height:20px;
+                background-color:green;
+                margin-right:10px;
+                border-radius:4px;
+            "></div>
+            <b>Green</b>&nbsp; — Moderate attention
+        </div>
+
+        <div style="display:flex; align-items:center;">
+            <div style="
+                width:20px;
+                height:20px;
+                background-color:blue;
+                margin-right:10px;
+                border-radius:4px;
+            "></div>
+            <b>Blue</b>&nbsp; — Low attention
+        </div>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.caption(
+            "Grad-CAM shows which regions contributed most to the model's prediction. "
+            "High attention does not necessarily mean the region is diseased."
+        )
+
         # ==================================================
         # PREDICTION HISTORY
         # ==================================================
 
-        st.divider()
+    st.divider()
 
-        st.subheader("📜 Prediction History")
+    st.subheader("📜 Prediction History")
 
-        history = get_prediction_history()
+    history = get_prediction_history()
 
 
-        if len(history) == 0:
+    if len(history) == 0:
 
-            st.info(
+        st.info(
                 "No predictions have been recorded yet."
             )
 
-        else:
+    else:
 
             # Show newest prediction first
-            history = history[::-1]
+        history = history[::-1]
 
 
             # --------------------------------------------------
             # HISTORY TABLE
             # --------------------------------------------------
 
-            st.markdown(
+        st.markdown(
                 "### 🧾 Previous Analyses"
             )
 
 
-            for i, prediction in enumerate(history):
+        for i, prediction in enumerate(history):
 
-                result = prediction["result"]
-                confidence = prediction["confidence"]
-                time = prediction["time"]
+            result = prediction["result"]
+            confidence = prediction["confidence"]
+            time = prediction["time"]
 
 
-                if result.lower() == "healthy":
+            if result.lower() == "healthy":
 
                     icon = "🟢"
 
-                else:
+            else:
 
                     icon = "🔴"
 
 
-                col1, col2, col3, col4 = st.columns(
+            col1, col2, col3, col4 = st.columns(
                     [2, 2, 2, 2]
                 )
 
 
-                with col1:
+            with col1:
 
                     st.write(
                         f"**{icon} {result}**"
@@ -568,39 +660,38 @@ if image_file is not None:
 
 
 
-                with col2:
+            with col2:
 
                     st.write(
                         f"🕐 {time}"
                     )
 
 
-                with col3:
+            with col3:
 
                     st.write(
                         f"🎯 {confidence:.2f}%"
                     )
 
 
-                if i < len(history) - 1:
+            if i < len(history) - 1:
 
                     st.divider()
 
+# --------------------------------------------------
+        # CLEAR HISTORY
+        # --------------------------------------------------
 
-            # --------------------------------------------------
-            # CLEAR HISTORY
-            # --------------------------------------------------
+        st.write("")
 
-            st.write("")
+        if st.button(
+            "🗑️ Clear Prediction History"
+        ):
 
-            if st.button(
-                "🗑️ Clear Prediction History"
-            ):
+            clear_prediction_history()
 
-                clear_prediction_history()
+            st.success(
+                "Prediction history cleared."
+            )
 
-                st.success(
-                    "Prediction history cleared."
-                )
-
-                st.rerun()
+            st.rerun()
