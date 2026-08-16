@@ -1,0 +1,17 @@
+[
+    {
+        "result": "diseased",
+        "confidence": 54.49,
+        "time": "2026-08-16 17:54:45"
+    },
+    {
+        "result": "diseased",
+        "confidence": 80.22,
+        "time": "2026-08-16 17:56:33"
+    },
+    {
+        "result": "healthy",
+        "confidence": 63.96,
+        "time": "2026-08-16 17:58:49"
+    }
+]
