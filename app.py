@@ -169,6 +169,11 @@ _root_vars = f"""
     --radius-lg: 22px;
     --radius-md: 16px;
     --radius-sm: 10px;
+
+    /* Default sidebar width. The drag handle (added further down) updates
+       this variable live on the real document element, so this value is
+       only ever the starting point / fallback. */
+    --sidebar-width: 21rem;
 }}
 </style>
 """
@@ -223,15 +228,44 @@ section[data-testid="stSidebar"] {
     visibility: visible !important;
     position: relative !important;
     margin-left: 0px !important;
-    min-width: 21rem !important;
-    max-width: 21rem !important;
-    width: 21rem !important;
+    min-width: 220px !important;
+    max-width: 560px !important;
+    width: var(--sidebar-width, 21rem) !important;
 }
 section[data-testid="stSidebar"] > div:first-child {
     transform: none !important;
     margin-left: 0px !important;
     visibility: visible !important;
-    width: 21rem !important;
+    width: var(--sidebar-width, 21rem) !important;
+}
+
+/* Drag-to-resize handle on the sidebar's right edge. Sits just outside the
+   visible border so it's easy to grab without stealing space from the
+   sidebar's own content, and is wired up by the script further down. */
+.leaf-sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -5px;
+    width: 10px;
+    height: 100%;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 999999;
+    background: transparent;
+}
+.leaf-sidebar-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 4px;
+    width: 2px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.16);
+    transition: background 0.15s ease;
+}
+.leaf-sidebar-resize-handle:hover::after,
+.leaf-sidebar-resize-handle.dragging::after {
+    background: var(--sprout);
 }
 /* The collapse/expand toggle no longer serves a purpose since the
    sidebar can't be collapsed anymore — hide it instead of leaving a
@@ -692,51 +726,190 @@ div[data-testid="stImage"] img {
 /* Toggle label readability in Settings */
 [data-testid="stWidgetLabel"] p { color: var(--text) !important; }
 
+/* ---------- MOBILE TAP RELIABILITY ---------- */
+/* Every interactive control gets an explicit, non-negotiable "you are
+   tappable" declaration. This is a safety net: nothing here should be
+   needed on a healthy page, but it guarantees no widget — most
+   importantly the dark mode toggle in Settings — can silently end up
+   visible-but-unresponsive on a touchscreen the way the old sidebar
+   collapse arrow used to. */
+button,
+[role="checkbox"],
+[role="switch"],
+[role="radio"],
+label,
+div[data-testid="stToggle"],
+div[data-testid="stToggle"] * ,
+div[data-testid="stCheckbox"],
+div[data-testid="stCheckbox"] * {
+    touch-action: manipulation;
+}
+div[data-testid="stToggle"],
+div[data-testid="stToggle"] * {
+    pointer-events: auto !important;
+}
+
 </style>
 """
 
 st.markdown(_root_vars + _static_css, unsafe_allow_html=True)
 
-# JS-based fallback for hiding Streamlit's own header/Deploy button.
-# The CSS rule above already targets it, but some Streamlit builds use a
-# data-testid the CSS misses, or re-apply an inline style after our
-# stylesheet loads. This walks the real page DOM (via window.parent,
-# since components.html renders inside an iframe) and force-hides it
-# directly, then keeps re-checking so it can't reappear after a rerun.
-# It only ever touches Streamlit's own chrome — never the app's content.
+# JS-based fallback for hiding Streamlit's own header/Deploy button, PLUS
+# the sidebar drag-to-resize handle. Both live in one throttled loop for
+# two reasons:
+#
+# 1. Persistence — this walks the real page DOM (via window.parent, since
+#    components.html renders inside an iframe), so both the chrome-hiding
+#    and the resize handle survive Streamlit reruns rebuilding parts of
+#    the page.
+#
+# 2. Mobile tap reliability — the previous version of the chrome-hider ran
+#    a full `document.querySelectorAll('button, span, div')` scan
+#    synchronously on *every single* DOM mutation, plus every 400ms on a
+#    timer. Streamlit reruns mutate large parts of the DOM at once
+#    (including right when a widget like the dark mode toggle is tapped),
+#    so that expensive scan was firing repeatedly in the exact window
+#    between touchstart and touchend on mobile — competing with, and
+#    sometimes winning against, the browser's own tap-to-click handling.
+#    That's the most likely cause of taps on real widgets landing as
+#    "visible but dead". Coalescing bursts of mutations into a single
+#    deferred (requestAnimationFrame) pass, and narrowing the stray
+#    "Deploy" text scan to just inside <header> instead of the whole
+#    document, removes that contention.
 components.html(
     """
     <script>
     (function () {
-        function hideStreamlitChrome() {
+        var MIN_WIDTH = 220;
+        var MAX_WIDTH = 560;
+
+        function applyWidth(px) {
             try {
-                const doc = window.parent.document;
-                const selectors = [
-                    'header', '[data-testid="stHeader"]', '[data-testid="stToolbar"]',
-                    '[data-testid="stDecoration"]', '[data-testid="stStatusWidget"]',
-                    '[data-testid="stAppDeployButton"]', '[data-testid="stToolbarActions"]',
-                    '[data-testid="stAppToolbar"]'
-                ];
-                doc.querySelectorAll(selectors.join(',')).forEach(function (el) {
-                    el.style.setProperty('display', 'none', 'important');
-                    el.style.setProperty('visibility', 'hidden', 'important');
-                    el.style.setProperty('pointer-events', 'none', 'important');
-                    el.style.setProperty('height', '0px', 'important');
-                });
-                doc.querySelectorAll('button, span, div').forEach(function (el) {
+                window.parent.document.documentElement.style.setProperty('--sidebar-width', px + 'px');
+            } catch (e) {}
+        }
+
+        function getStoredWidth() {
+            if (typeof window.parent.__leafSidebarWidthPx !== 'number') {
+                window.parent.__leafSidebarWidthPx = 336; // 21rem @ 16px root
+            }
+            return window.parent.__leafSidebarWidthPx;
+        }
+
+        function setStoredWidth(px) {
+            window.parent.__leafSidebarWidthPx = px;
+            applyWidth(px);
+        }
+
+        function hideStreamlitChrome(doc) {
+            var selectors = [
+                'header', '[data-testid="stHeader"]', '[data-testid="stToolbar"]',
+                '[data-testid="stDecoration"]', '[data-testid="stStatusWidget"]',
+                '[data-testid="stAppDeployButton"]', '[data-testid="stToolbarActions"]',
+                '[data-testid="stAppToolbar"]'
+            ];
+            doc.querySelectorAll(selectors.join(',')).forEach(function (el) {
+                el.style.setProperty('display', 'none', 'important');
+                el.style.setProperty('visibility', 'hidden', 'important');
+                el.style.setProperty('pointer-events', 'none', 'important');
+                el.style.setProperty('height', '0px', 'important');
+            });
+            // Scoped to inside <header> only (a handful of elements) instead
+            // of the previous document-wide button/span/div scan — same
+            // result, far cheaper, and can never compete with a tap on a
+            // real widget elsewhere on the page.
+            var header = doc.querySelector('header');
+            if (header) {
+                header.querySelectorAll('button, span, div').forEach(function (el) {
                     if (el.children.length === 0 && el.textContent.trim() === 'Deploy') {
-                        var target = el.closest('header') || el;
-                        target.style.setProperty('display', 'none', 'important');
+                        (el.closest('header') || el).style.setProperty('display', 'none', 'important');
                     }
                 });
-            } catch (e) { /* not ready yet — ignore, next tick will retry */ }
+            }
         }
-        hideStreamlitChrome();
+
+        function ensureResizeHandle(doc) {
+            var sidebar = doc.querySelector('section[data-testid="stSidebar"]');
+            if (!sidebar) return;
+
+            // Re-assert the current width even if the sidebar's inner DOM
+            // was rebuilt by a Streamlit rerun.
+            applyWidth(getStoredWidth());
+
+            if (sidebar.querySelector(':scope > .leaf-sidebar-resize-handle')) return;
+
+            var handle = doc.createElement('div');
+            handle.className = 'leaf-sidebar-resize-handle';
+            handle.setAttribute('aria-hidden', 'true');
+            sidebar.appendChild(handle);
+
+            var dragging = false;
+            var startX = 0;
+            var startWidth = 0;
+
+            function onPointerMove(e) {
+                if (!dragging) return;
+                var x = e.touches ? e.touches[0].clientX : e.clientX;
+                var next = startWidth + (x - startX);
+                if (next < MIN_WIDTH) next = MIN_WIDTH;
+                if (next > MAX_WIDTH) next = MAX_WIDTH;
+                setStoredWidth(next);
+            }
+
+            function stopDrag() {
+                if (!dragging) return;
+                dragging = false;
+                handle.classList.remove('dragging');
+                doc.body.style.removeProperty('cursor');
+                doc.body.style.removeProperty('user-select');
+                doc.removeEventListener('mousemove', onPointerMove);
+                doc.removeEventListener('mouseup', stopDrag);
+                doc.removeEventListener('touchmove', onPointerMove);
+                doc.removeEventListener('touchend', stopDrag);
+            }
+
+            function startDrag(e) {
+                dragging = true;
+                startX = e.touches ? e.touches[0].clientX : e.clientX;
+                startWidth = getStoredWidth();
+                handle.classList.add('dragging');
+                doc.body.style.setProperty('cursor', 'ew-resize', 'important');
+                doc.body.style.setProperty('user-select', 'none', 'important');
+                doc.addEventListener('mousemove', onPointerMove);
+                doc.addEventListener('mouseup', stopDrag);
+                doc.addEventListener('touchmove', onPointerMove, { passive: true });
+                doc.addEventListener('touchend', stopDrag);
+                e.preventDefault();
+            }
+
+            handle.addEventListener('mousedown', startDrag);
+            handle.addEventListener('touchstart', startDrag, { passive: false });
+        }
+
+        var scheduled = false;
+        function runMaintenance() {
+            try {
+                var doc = window.parent.document;
+                hideStreamlitChrome(doc);
+                ensureResizeHandle(doc);
+            } catch (e) { /* parent not ready yet — next tick will retry */ }
+        }
+
+        function scheduleMaintenance() {
+            if (scheduled) return;
+            scheduled = true;
+            requestAnimationFrame(function () {
+                scheduled = false;
+                runMaintenance();
+            });
+        }
+
+        scheduleMaintenance();
         try {
-            new MutationObserver(hideStreamlitChrome)
+            new MutationObserver(scheduleMaintenance)
                 .observe(window.parent.document.body, { childList: true, subtree: true });
         } catch (e) {}
-        setInterval(hideStreamlitChrome, 400);
+        setInterval(scheduleMaintenance, 1000);
     })();
     </script>
     """,
