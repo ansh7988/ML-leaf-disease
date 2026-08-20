@@ -1,17 +1,197 @@
 [
     {
         "result": "diseased",
-        "confidence": 54.49,
-        "time": "2026-08-16 17:54:45"
+        "confidence": 67.45,
+        "time": "2026-08-19 22:08:02"
     },
     {
         "result": "diseased",
-        "confidence": 80.22,
-        "time": "2026-08-16 17:56:33"
+        "confidence": 84.39,
+        "time": "2026-08-19 22:15:49"
+    },
+    {
+        "result": "nutrient stress",
+        "confidence": 89.48,
+        "time": "2026-08-20 00:58:38"
     },
     {
         "result": "healthy",
-        "confidence": 63.96,
-        "time": "2026-08-16 17:58:49"
+        "confidence": 97.76,
+        "time": "2026-08-20 01:00:26"
+    },
+    {
+        "result": "insect pest",
+        "confidence": 53.29,
+        "time": "2026-08-20 01:00:53"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 92.98,
+        "time": "2026-08-20 01:01:22"
+    },
+    {
+        "result": "rust",
+        "confidence": 82.89,
+        "time": "2026-08-20 01:01:47"
+    },
+    {
+        "result": "leaf spot",
+        "confidence": 77.08,
+        "time": "2026-08-20 01:02:23"
+    },
+    {
+        "result": "leaf blight",
+        "confidence": 94.81,
+        "time": "2026-08-20 01:04:12"
+    },
+    {
+        "result": "leaf blight",
+        "confidence": 81.74,
+        "time": "2026-08-20 01:12:30"
+    },
+    {
+        "result": "leaf blight",
+        "confidence": 67.15,
+        "time": "2026-08-20 01:14:48"
+    },
+    {
+        "result": "insect pest",
+        "confidence": 91.34,
+        "time": "2026-08-20 01:17:48"
+    },
+    {
+        "result": "leaf spot",
+        "confidence": 67.15,
+        "time": "2026-08-20 01:18:49"
+    },
+    {
+        "result": "leaf spot",
+        "confidence": 48.69,
+        "time": "2026-08-20 01:19:12"
+    },
+    {
+        "result": "diseased, but exact disease could not be identified",
+        "confidence": 48.69,
+        "time": "2026-08-20 09:41:57"
+    },
+    {
+        "result": "insect pest",
+        "confidence": 91.34,
+        "time": "2026-08-20 09:42:17"
+    },
+    {
+        "result": "leaf blight",
+        "confidence": 67.15,
+        "time": "2026-08-20 09:42:57"
+    },
+    {
+        "result": "rust",
+        "confidence": 82.89,
+        "time": "2026-08-20 09:43:14"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 92.98,
+        "time": "2026-08-20 09:43:28"
+    },
+    {
+        "result": "healthy",
+        "confidence": 97.76,
+        "time": "2026-08-20 09:43:42"
+    },
+    {
+        "result": "rust",
+        "confidence": 80.0,
+        "time": "2026-08-20 14:54:11"
+    },
+    {
+        "result": "healthy",
+        "confidence": 98.64,
+        "time": "2026-08-20 14:55:54"
+    },
+    {
+        "result": "healthy",
+        "confidence": 69.18,
+        "time": "2026-08-20 14:58:17"
+    },
+    {
+        "result": "nutrient stress",
+        "confidence": 84.55,
+        "time": "2026-08-20 15:03:47"
+    },
+    {
+        "result": "diseased, but exact disease could not be identified",
+        "confidence": 41.79,
+        "time": "2026-08-20 15:15:36"
+    },
+    {
+        "result": "nutrient stress",
+        "confidence": 89.48,
+        "time": "2026-08-20 15:16:42"
+    },
+    {
+        "result": "nutrient stress",
+        "confidence": 60.37,
+        "time": "2026-08-20 15:17:16"
+    },
+    {
+        "result": "healthy",
+        "confidence": 92.13,
+        "time": "2026-08-20 15:18:50"
+    },
+    {
+        "result": "healthy",
+        "confidence": 92.09,
+        "time": "2026-08-20 15:24:18"
+    },
+    {
+        "result": "healthy",
+        "confidence": 99.21,
+        "time": "2026-08-20 15:25:21"
+    },
+    {
+        "result": "diseased, but exact disease could not be identified",
+        "confidence": 40.2,
+        "time": "2026-08-20 15:26:04"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 89.27,
+        "time": "2026-08-20 15:26:19"
+    },
+    {
+        "result": "diseased, but exact disease could not be identified",
+        "confidence": 56.47,
+        "time": "2026-08-20 15:27:50"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 68.99,
+        "time": "2026-08-20 15:30:16"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 89.27,
+        "time": "2026-08-20 15:41:05"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 89.27,
+        "time": "2026-08-20 15:42:54"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 68.99,
+        "time": "2026-08-20 15:45:10"
+    },
+    {
+        "result": "powdery mildew",
+        "confidence": 89.27,
+        "time": "2026-08-20 15:47:44"
+    },
+    {
+        "result": "nutrient stress",
+        "confidence": 88.11,
+        "time": "2026-08-20 16:01:23"
     }
 ]

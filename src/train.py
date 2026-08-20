@@ -25,18 +25,7 @@ model.summary()
 
 
 # -----------------------------
-# 3. Compile model
-# -----------------------------
-
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
-    loss="binary_crossentropy",
-    metrics=["accuracy"]
-)
-
-
-# -----------------------------
-# 4. Train model
+# 3. Train model
 # -----------------------------
 
 history = model.fit(
@@ -47,7 +36,7 @@ history = model.fit(
 
 
 # -----------------------------
-# 5. Save model
+# 4. Save model
 # -----------------------------
 
 os.makedirs("model", exist_ok=True)

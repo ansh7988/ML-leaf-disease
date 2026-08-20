@@ -1,8 +1,7 @@
 import sys
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+
 from src.prediction_history import save_prediction
 
 
@@ -10,9 +9,24 @@ MODEL_PATH = "model/leaf_health_model.keras"
 
 IMG_SIZE = (224, 224)
 
+# Model classes
+CLASS_NAMES = [
+    "Healthy",
+    "Insect Pest",
+    "Leaf Blight",
+    "Leaf Spot",
+    "Nutrient Stress",
+    "Powdery Mildew",
+    "Rust"
+]
+
+# Below this confidence, don't claim an exact disease
+CONFIDENCE_THRESHOLD = 0.60
+
 
 # Load model
 model = tf.keras.models.load_model(MODEL_PATH)
+
 
 def predict_leaf(image_path):
 
@@ -34,46 +48,77 @@ def predict_leaf(image_path):
     )
 
     # Model prediction
-    prediction = model.predict(
+    predictions = model.predict(
         img_array,
         verbose=0
-    )[0][0]
+    )[0]
 
-    # Probabilities
-    healthy_probability = float(prediction)
-    diseased_probability = float(1 - prediction)
+    # Get highest probability class
+    predicted_index = np.argmax(predictions)
 
-    # Final prediction
-    if prediction >= 0.5:
+    confidence = float(predictions[predicted_index])
 
-        result = "Healthy"
-        confidence = healthy_probability
+    predicted_class = CLASS_NAMES[predicted_index]
+
+
+    # ---------------------------------
+    # UNCERTAIN PREDICTION
+    # ---------------------------------
+
+    if confidence < CONFIDENCE_THRESHOLD:
+
+        if predicted_class == "Healthy":
+
+            result = "Healthy, but prediction is uncertain"
+
+        else:
+
+            result = "Diseased, but exact disease could not be identified"
 
     else:
 
-        result = "Diseased"
-        confidence = diseased_probability
+        result = predicted_class
 
+
+    # Save prediction
     save_prediction(result, confidence)
+
 
     return (
         result,
         confidence,
-        healthy_probability,
-        diseased_probability
+        predictions
     )
+
 
 if __name__ == "__main__":
 
     if len(sys.argv) < 2:
+
         print("Usage: python src/predict.py <image_path>")
         sys.exit(1)
 
+
     image_path = sys.argv[1]
 
-    result, confidence = predict_leaf(image_path)
+    result, confidence, predictions = predict_leaf(image_path)
+
 
     print("\nPrediction")
     print("----------------")
+
     print(f"Result: {result}")
     print(f"Confidence: {confidence * 100:.2f}%")
+
+
+    print("\nAll Class Probabilities")
+    print("----------------")
+
+    for class_name, probability in zip(
+        CLASS_NAMES,
+        predictions
+    ):
+
+        print(
+            f"{class_name}: {probability * 100:.2f}%"
+        )

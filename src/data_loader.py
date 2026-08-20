@@ -11,7 +11,7 @@ DATA_DIR = "data/raw"
 
 def get_data_generators():
 
-    # Training data: augmentation enabled
+    # Training data
     train_datagen = ImageDataGenerator(
         preprocessing_function=preprocess_input,
         validation_split=0.2,
@@ -22,7 +22,7 @@ def get_data_generators():
         horizontal_flip=True
     )
 
-    # Validation data: ONLY preprocessing
+    # Validation data
     validation_datagen = ImageDataGenerator(
         preprocessing_function=preprocess_input,
         validation_split=0.2
@@ -32,7 +32,7 @@ def get_data_generators():
         DATA_DIR,
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
-        class_mode="binary",
+        class_mode="sparse",
         subset="training",
         shuffle=True
     )
@@ -41,9 +41,9 @@ def get_data_generators():
         DATA_DIR,
         target_size=IMG_SIZE,
         batch_size=BATCH_SIZE,
-        class_mode="binary",
+        class_mode="sparse",
         subset="validation",
         shuffle=False
     )
 
-    return train_data, validation_data 
+    return train_data, validation_data

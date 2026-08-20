@@ -1,47 +1,84 @@
 import tensorflow as tf
-from sklearn.metrics import classification_report, confusion_matrix
+import numpy as np
+
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    accuracy_score
+)
+
 from data_loader import get_data_generators
 
 
 MODEL_PATH = "model/leaf_health_model.keras"
 
+CLASS_NAMES = [
+    "Healthy",
+    "Insect Pest",
+    "Leaf Blight",
+    "Leaf Spot",
+    "Nutrient Stress",
+    "Powdery Mildew",
+    "Rust"
+]
+
+
+# Load model
+model = tf.keras.models.load_model(MODEL_PATH)
 
 # Load validation data
 _, validation_data = get_data_generators()
 
-# Load trained model
-model = tf.keras.models.load_model(MODEL_PATH)
+# Make predictions
+predictions = model.predict(
+    validation_data,
+    verbose=1
+)
 
-# Evaluate
-loss, accuracy = model.evaluate(validation_data)
+predicted_classes = np.argmax(
+    predictions,
+    axis=1
+)
 
-print("\nEvaluation Results")
-print("------------------")
-print(f"Loss: {loss:.4f}")
-print(f"Accuracy: {accuracy:.4f}")
-
-
-# Predictions
-predictions = model.predict(validation_data)
-
-predicted_classes = (predictions > 0.5).astype(int).flatten()
 true_classes = validation_data.classes
 
-class_names = list(validation_data.class_indices.keys())
 
+# Accuracy
+accuracy = accuracy_score(
+    true_classes,
+    predicted_classes
+)
+
+print("\n==============================")
+print("MODEL EVALUATION")
+print("==============================")
+
+print(
+    f"\nAccuracy: {accuracy * 100:.2f}%"
+)
+
+
+# Classification report
 print("\nClassification Report")
-print("---------------------")
+print("------------------------------")
 
 print(
     classification_report(
         true_classes,
         predicted_classes,
-        labels=[0, 1],
-        target_names=["diseased", "healthy"],
+        target_names=CLASS_NAMES,
         zero_division=0
     )
 )
 
+
+# Confusion matrix
+cm = confusion_matrix(
+    true_classes,
+    predicted_classes
+)
+
 print("\nConfusion Matrix")
-print("----------------")
-print(confusion_matrix(true_classes, predicted_classes,labels=[0, 1]))
+print("------------------------------")
+
+print(cm)

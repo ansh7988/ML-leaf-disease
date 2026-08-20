@@ -10,14 +10,25 @@ from src.predict import predict_leaf
 from src.prediction_history import get_prediction_history, clear_prediction_history
 from weather import get_weather
 from weather_risk import analyze_weather
+if "predictions" not in st.session_state:
+    st.session_state["predictions"] = []
 
+CLASS_NAMES = [
+    "Healthy",
+    "Insect Pest",
+    "Leaf Blight",
+    "Leaf Spot",
+    "Nutrient Stress",
+    "Powdery Mildew",
+    "Rust"
+]
 
 # ==================================================
 # PAGE CONFIG
 # ==================================================
 
 st.set_page_config(
-    page_title="Leaf Health AI | Dashboard",
+    page_title="PlantGuard AI | Dashboard",
     page_icon="🌿",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -45,8 +56,6 @@ _DEFAULTS = {
     "leaf_image_hash": None,
     "pred_result": None,
     "pred_confidence": None,
-    "pred_healthy_probability": None,
-    "pred_diseased_probability": None,
     "gradcam_image": None,
     "current_weather": None,
     "weather_analysis": None,
@@ -216,27 +225,41 @@ div[data-testid="stStatusWidget"],
     visibility: hidden !important;
     height: 0 !important;
 }
-/* Keep the navigation sidebar permanently expanded and on-screen.
-   Streamlit lets the sidebar be collapsed (via its own toggle, a stray
-   click, or a narrow window) and — depending on the Streamlit version —
-   the button to bring it back can end up mis-positioned or hidden. Since
-   the sidebar is this app's only navigation, we simply stop it from ever
-   sliding away, so Home/Disease Detection/Confidence Graph/etc. are
-   always reachable regardless of that collapsed state or button quirk. */
-section[data-testid="stSidebar"] {
-    transform: none !important;
-    visibility: visible !important;
-    position: relative !important;
-    margin-left: 0px !important;
-    min-width: 220px !important;
-    max-width: 560px !important;
-    width: var(--sidebar-width, 21rem) !important;
-}
-section[data-testid="stSidebar"] > div:first-child {
-    transform: none !important;
-    margin-left: 0px !important;
-    visibility: visible !important;
-    width: var(--sidebar-width, 21rem) !important;
+
+/* Keep the navigation sidebar permanently expanded and on-screen — but
+   ONLY on wide (desktop/tablet) viewports. On real mobile widths there
+   isn't enough room for a fixed 220px+ sidebar next to the page content,
+   so forcing it open here as well was pushing/overlapping the sidebar
+   over the dashboard and every other page, and silently swallowing taps
+   meant for widgets underneath it (including the dark mode toggle on
+   Settings). Below the breakpoint we leave Streamlit's own native
+   collapsible/overlay sidebar behavior (and its collapse/expand control)
+   in place instead of overriding it. */
+@media (min-width: 769px) {
+    section[data-testid="stSidebar"] {
+        transform: none !important;
+        visibility: visible !important;
+        position: relative !important;
+        margin-left: 0px !important;
+        min-width: 220px !important;
+        max-width: 560px !important;
+        width: var(--sidebar-width, 21rem) !important;
+    }
+    section[data-testid="stSidebar"] > div:first-child {
+        transform: none !important;
+        margin-left: 0px !important;
+        visibility: visible !important;
+        width: var(--sidebar-width, 21rem) !important;
+    }
+    /* The collapse/expand toggle no longer serves a purpose on desktop
+       since the sidebar can't be collapsed there — hide it instead of
+       leaving a dead button on screen. On mobile it stays visible and
+       functional so the sidebar can actually be opened/closed. */
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    button[data-testid="baseButton-headerNoPadding"] {
+        display: none !important;
+    }
 }
 
 /* Drag-to-resize handle on the sidebar's right edge. Sits just outside the
@@ -266,14 +289,6 @@ section[data-testid="stSidebar"] > div:first-child {
 .leaf-sidebar-resize-handle:hover::after,
 .leaf-sidebar-resize-handle.dragging::after {
     background: var(--sprout);
-}
-/* The collapse/expand toggle no longer serves a purpose since the
-   sidebar can't be collapsed anymore — hide it instead of leaving a
-   dead button on screen. */
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="collapsedControl"],
-button[data-testid="baseButton-headerNoPadding"] {
-    display: none !important;
 }
 
 .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
@@ -698,6 +713,24 @@ div[data-testid="stFileUploaderDropzone"] {
     border: 2px dashed var(--uploader-border);
     border-radius: var(--radius-md);
 }
+/* The "Browse files" button inside the dropzone isn't covered by any
+   other rule above, so it was falling back to an unstyled dark button
+   with dark text — unreadable in light mode. Force it onto the theme's
+   surface/text colors explicitly, regardless of the browser/OS color
+   scheme. */
+div[data-testid="stFileUploaderDropzone"] button {
+    background: var(--surface) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--border) !important;
+}
+div[data-testid="stFileUploaderDropzone"] button:hover {
+    background: var(--chip-bg) !important;
+    color: #FFFFFF !important;
+}
+}
+div[data-testid="stFileUploaderDropzone"] small {
+    color: var(--muted) !important;
+}
 
 div[data-testid="stTextInput"] input {
     background: var(--input-bg);
@@ -776,12 +809,27 @@ st.markdown(_root_vars + _static_css, unsafe_allow_html=True)
 #    deferred (requestAnimationFrame) pass, and narrowing the stray
 #    "Deploy" text scan to just inside <header> instead of the whole
 #    document, removes that contention.
+#
+# 3. The resize handle (and the --sidebar-width it controls) only matters
+#    once the sidebar is forced open on desktop widths — see the
+#    `@media (min-width: 769px)` block above — so it is skipped entirely
+#    on mobile, where it would otherwise sit on top of the native
+#    collapsible sidebar and get in the way of opening/closing it.
 components.html(
     """
     <script>
     (function () {
         var MIN_WIDTH = 220;
         var MAX_WIDTH = 560;
+        var DESKTOP_BREAKPOINT = 769;
+
+        function isDesktopWidth() {
+            try {
+                return window.parent.innerWidth >= DESKTOP_BREAKPOINT;
+            } catch (e) {
+                return true;
+            }
+        }
 
         function applyWidth(px) {
             try {
@@ -829,8 +877,22 @@ components.html(
         }
 
         function ensureResizeHandle(doc) {
+            // The drag-to-resize handle (and the forced sidebar width it
+            // drives) is a desktop-only affordance — see the
+            // `@media (min-width: 769px)` rule in the injected CSS. On
+            // mobile widths the sidebar uses Streamlit's own native
+            // collapsible/overlay behavior instead, so skip wiring the
+            // handle up (and remove it if the window was resized down
+            // from desktop to mobile) to avoid it sitting on top of, and
+            // intercepting taps meant for, that native toggle.
             var sidebar = doc.querySelector('section[data-testid="stSidebar"]');
             if (!sidebar) return;
+
+            if (!isDesktopWidth()) {
+                var existing = sidebar.querySelector(':scope > .leaf-sidebar-resize-handle');
+                if (existing) existing.remove();
+                return;
+            }
 
             // Re-assert the current width even if the sidebar's inner DOM
             // was rebuilt by a Streamlit rerun.
@@ -909,6 +971,9 @@ components.html(
             new MutationObserver(scheduleMaintenance)
                 .observe(window.parent.document.body, { childList: true, subtree: true });
         } catch (e) {}
+        try {
+            window.parent.addEventListener('resize', scheduleMaintenance);
+        } catch (e) {}
         setInterval(scheduleMaintenance, 1000);
     })();
     </script>
@@ -975,7 +1040,7 @@ def topbar(icon, title, subtitle, history):
                 <div class="topbar-sub">{subtitle}</div>
             </div>
             <div class="topbar-stats">
-                {stats_html}
+                {stats_html.strip()}
             </div>
         </div>
         """,
@@ -1015,7 +1080,7 @@ with st.sidebar:
         """
         <div class="sidebar-brand">
             <div class="leaf-mark">🌿</div>
-            <div class="brand-name">Leaf Health AI</div>
+            <div class="brand-name">PlantGuard AI</div>
             <div class="brand-tag">Precision plant diagnostics</div>
         </div>
         """,
@@ -1151,10 +1216,32 @@ def render_home():
         st.markdown("<hr>", unsafe_allow_html=True)
         st.markdown('<div class="section-title">🩺 Most Recent Diagnosis</div>', unsafe_allow_html=True)
 
-        is_healthy = st.session_state["pred_result"].lower() == "healthy"
-        card_class = "healthy" if is_healthy else "diseased"
-        result_icon = "🟢" if is_healthy else "🔴"
-        status_text = "No disease detected" if is_healthy else "Attention recommended"
+        latest_result = st.session_state["pred_result"]
+
+        is_healthy = latest_result.lower() == "healthy"
+
+        is_uncertain = (
+            "exact disease could not be identified"
+            in latest_result.lower()
+        )
+
+        if is_healthy:
+
+            card_class = "healthy"
+            result_icon = "🟢"
+            status_text = "No disease detected"
+
+        elif is_uncertain:
+
+            card_class = "diseased"
+            result_icon = "🟠"
+            status_text = "Prediction uncertain"
+
+        else:
+
+            card_class = "diseased"
+            result_icon = "🔴"
+            status_text = "Disease detected"
 
         st.markdown(
             f"""
@@ -1221,7 +1308,7 @@ def render_disease_detection():
                 image_path = temp_file.name
 
             with st.spinner("Analyzing leaf..."):
-                result, confidence, healthy_probability, diseased_probability = predict_leaf(image_path)
+                result, confidence, predictions = predict_leaf(image_path)
 
             with st.spinner("Generating AI visual.."):
                 gradcam_image = make_gradcam(image_path)
@@ -1231,12 +1318,13 @@ def render_disease_detection():
             st.session_state["leaf_image_hash"] = image_hash
             st.session_state["pred_result"] = result
             st.session_state["pred_confidence"] = confidence
-            st.session_state["pred_healthy_probability"] = healthy_probability
-            st.session_state["pred_diseased_probability"] = diseased_probability
             st.session_state["gradcam_image"] = gradcam_image
+            st.session_state["predictions"] = predictions
+            
         else:
             result = st.session_state["pred_result"]
             confidence = st.session_state["pred_confidence"]
+            predictions = st.session_state["predictions"]
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -1248,9 +1336,29 @@ def render_disease_detection():
 
         with col2:
             is_healthy = result.lower() == "healthy"
-            result_icon = "🟢" if is_healthy else "🔴"
-            card_class = "healthy" if is_healthy else "diseased"
-            status_text = "No disease detected" if is_healthy else "Attention recommended"
+
+            is_uncertain = (
+                "exact disease could not be identified"
+                in result.lower()
+            )
+
+            if is_healthy:
+
+                result_icon = "🟢"
+                card_class = "healthy"
+                status_text = "No disease detected"
+
+            elif is_uncertain:
+
+                result_icon = "🟠"
+                card_class = "diseased"
+                status_text = "Prediction uncertain"
+
+            else:
+
+                result_icon = "🔴"
+                card_class = "diseased"
+                status_text = "Disease detected"
 
             st.markdown(
                 f"""
@@ -1302,6 +1410,7 @@ def render_confidence_graph():
 
     result = st.session_state["pred_result"]
     confidence = st.session_state["pred_confidence"]
+    predictions = st.session_state["predictions"]
 
     plt.rcParams.update({
         "font.family": "sans-serif",
@@ -1318,33 +1427,71 @@ def render_confidence_graph():
     graph1, graph2 = st.columns(2)
 
     # ---------------- GRAPH 1 — PREDICTION PROBABILITY ----------------
+# ---------------- GRAPH 1 — ALL CLASS PROBABILITIES ----------------
+
     with graph1:
-        st.markdown('<div class="section-title" style="font-size:17px;">🧠 Prediction Probability</div>', unsafe_allow_html=True)
 
-        labels = ["Healthy", "Diseased"]
+        st.markdown(
+        '<div class="section-title" style="font-size:17px;">🧠 Class Probabilities</div>',
+        unsafe_allow_html=True
+    )
 
-        if result.lower() == "healthy":
-            probabilities = [confidence * 100, (1 - confidence) * 100]
-        else:
-            probabilities = [(1 - confidence) * 100, confidence * 100]
+        probabilities = [
+        float(p) * 100
+        for p in predictions
+    ]
 
-        fig1, ax1 = plt.subplots(figsize=(6.4, 3.8))
-        bar_colors = [SPROUT, SUN]
-        ax1.bar(labels, probabilities, color=bar_colors, width=0.5, zorder=3)
+        fig1, ax1 = plt.subplots(
+        figsize=(7, 4.5)
+    )
+
+        bars = ax1.barh(
+        CLASS_NAMES,
+        probabilities,
+        color=SPROUT,
+        zorder=3
+    )
+
+        ax1.invert_yaxis()
+
+        ax1.set_xlim(0, 100)
+
+        ax1.set_xlabel(
+        "Probability (%)"
+    )
+
+        ax1.grid(
+        axis="x",
+        alpha=0.25,
+        zorder=0
+    )
+
+        ax1.set_axisbelow(True)
+
+        for bar, value in zip(
+        bars,
+        probabilities
+    ):
+
+            ax1.text(
+            value + 1,
+            bar.get_y() + bar.get_height() / 2,
+            f"{value:.2f}%",
+            va="center",
+            fontweight="bold",
+            color=GRAPH_ACCENT
+        )
 
         for spine in ["top", "right", "left"]:
             ax1.spines[spine].set_visible(False)
 
-        ax1.set_ylim(0, 100)
-        ax1.set_ylabel("Probability (%)")
-        ax1.grid(axis="y", alpha=0.25, zorder=0)
-        ax1.set_axisbelow(True)
-
-        for i, value in enumerate(probabilities):
-            ax1.text(i, value + 3, f"{value:.2f}%", ha="center", fontweight="bold", color=GRAPH_ACCENT)
-
         plt.tight_layout()
-        st.pyplot(fig1, transparent=True)
+
+        st.pyplot(
+        fig1,
+        transparent=True
+    )
+
         plt.close(fig1)
 
     # ---------------- GRAPH 2 — CONFIDENCE LINE GRAPH ----------------
