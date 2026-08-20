@@ -104,6 +104,9 @@ THEMES = {
         "uploader_border": "#95D5B2",
         "hist_row_bg": "#FBFDFB",
         "input_bg": "#FFFFFF",
+        "nav_text": "#1B4332",
+        "nav_bg": "rgba(255, 255, 255, 0.90)",
+        "nav_border": "rgba(27, 67, 50, 0.15)",
     },
     "dark": {
         "bg": "#0B1712",
@@ -127,6 +130,9 @@ THEMES = {
         "uploader_border": "rgba(149, 213, 178, 0.35)",
         "hist_row_bg": "#0F1F19",
         "input_bg": "#0F1F19",
+        "nav_text": "#EAF6EF",
+        "nav_bg": "rgba(255, 255, 255, 0.08)",
+        "nav_border": "rgba(255, 255, 255, 0.12)",
     },
 }
 
@@ -174,6 +180,9 @@ _root_vars = f"""
     --uploader-border: {T["uploader_border"]};
     --hist-row-bg: {T["hist_row_bg"]};
     --input-bg: {T["input_bg"]};
+    --nav-text: {T["nav_text"]};
+    --nav-bg: {T["nav_bg"]};
+    --nav-border: {T["nav_border"]};
 
     --radius-lg: 22px;
     --radius-md: 16px;
@@ -204,17 +213,7 @@ h1, h2, h3, h4, .app-font-display {
 
 #MainMenu, footer {visibility: hidden;}
 
-/* Remove Streamlit's own top header entirely (Deploy button, toolbar,
-   status spinner, colored decoration line). Previously this header was
-   kept around only because it also housed the sidebar collapse/expand
-   control — but the sidebar is now forced permanently open below, so
-   that control is gone too and the header has nothing left to do.
-   Leaving it visible was actually the cause of the black "Deploy" box
-   overlapping the topbar stats. The bare "header" tag selector (in
-   addition to the data-testid ones) makes this resilient to Streamlit
-   renaming its internal test-ids across versions. */
-header,
-header[data-testid="stHeader"],
+/* Remove Streamlit toolbar, status widget, and deploy button across viewports */
 div[data-testid="stToolbar"],
 div[data-testid="stDecoration"],
 div[data-testid="stStatusWidget"],
@@ -226,16 +225,14 @@ div[data-testid="stStatusWidget"],
     height: 0 !important;
 }
 
-/* Keep the navigation sidebar permanently expanded and on-screen — but
-   ONLY on wide (desktop/tablet) viewports. On real mobile widths there
-   isn't enough room for a fixed 220px+ sidebar next to the page content,
-   so forcing it open here as well was pushing/overlapping the sidebar
-   over the dashboard and every other page, and silently swallowing taps
-   meant for widgets underneath it (including the dark mode toggle on
-   Settings). Below the breakpoint we leave Streamlit's own native
-   collapsible/overlay sidebar behavior (and its collapse/expand control)
-   in place instead of overriding it. */
+/* Keep the navigation sidebar permanently expanded and on-screen on desktop/tablet */
 @media (min-width: 769px) {
+    header,
+    header[data-testid="stHeader"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+    }
     section[data-testid="stSidebar"] {
         transform: none !important;
         visibility: visible !important;
@@ -252,9 +249,7 @@ div[data-testid="stStatusWidget"],
         width: var(--sidebar-width, 21rem) !important;
     }
     /* The collapse/expand toggle no longer serves a purpose on desktop
-       since the sidebar can't be collapsed there — hide it instead of
-       leaving a dead button on screen. On mobile it stays visible and
-       functional so the sidebar can actually be opened/closed. */
+       since the sidebar can't be collapsed there — hide it on desktop. */
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"],
     button[data-testid="baseButton-headerNoPadding"] {
@@ -295,7 +290,7 @@ div[data-testid="stStatusWidget"],
     background:
         radial-gradient(circle at 8% 0%, rgba(82,183,136,0.10) 0%, transparent 45%),
         radial-gradient(circle at 95% 8%, rgba(45,106,79,0.10) 0%, transparent 40%),
-        var(--bg);
+        var(--bg) !important;
 }
 
 .block-container {
@@ -359,23 +354,33 @@ section[data-testid="stSidebar"] div[role="radiogroup"] {
 }
 section[data-testid="stSidebar"] div[role="radiogroup"] label {
     width: 100%;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: var(--nav-bg) !important;
+    border: 1px solid var(--nav-border) !important;
     border-radius: 12px;
     padding: 10px 14px !important;
     transition: background 0.15s ease, border-color 0.15s ease;
 }
 section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: rgba(255,255,255,0.10);
+    background: rgba(255, 255, 255, 0.98) !important;
 }
 section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-    background: linear-gradient(135deg, var(--leaf), var(--sprout));
-    border-color: transparent;
+    background: linear-gradient(135deg, var(--leaf), var(--sprout)) !important;
+    border-color: transparent !important;
     box-shadow: 0 4px 14px rgba(0,0,0,0.25);
 }
-section[data-testid="stSidebar"] div[role="radiogroup"] label p {
+section[data-testid="stSidebar"] div[role="radiogroup"] label p,
+section[data-testid="stSidebar"] div[role="radiogroup"] label span,
+section[data-testid="stSidebar"] div[role="radiogroup"] label div,
+section[data-testid="stSidebar"] div[role="radiogroup"] label * {
     font-size: 14px !important;
     font-weight: 600 !important;
+    color: var(--nav-text) !important;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p,
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) span,
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) div,
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) * {
+    color: #FFFFFF !important;
 }
 
 .sidebar-footer {
@@ -392,8 +397,8 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label p {
     justify-content: space-between;
     gap: 20px;
     flex-wrap: wrap;
-    background: var(--topbar-bg);
-    border: 1px solid var(--topbar-border);
+    background: var(--topbar-bg) !important;
+    border: 1px solid var(--topbar-border) !important;
     border-radius: var(--radius-md);
     padding: 18px 26px;
     margin-bottom: 24px;
@@ -404,14 +409,14 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label p {
     font-family: 'Poppins', sans-serif;
     font-weight: 700;
     font-size: 23px;
-    color: var(--heading);
+    color: var(--heading) !important;
     display: flex;
     align-items: center;
     gap: 10px;
 }
 .topbar-sub {
     font-size: 13px;
-    color: var(--muted);
+    color: var(--muted) !important;
     margin-top: 3px;
 }
 .topbar-stats {
@@ -423,11 +428,11 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label p {
     font-family: 'Poppins', sans-serif;
     font-weight: 700;
     font-size: 18px;
-    color: var(--heading);
+    color: var(--heading) !important;
 }
 .topbar-stat .lab {
     font-size: 10.5px;
-    color: var(--muted);
+    color: var(--muted) !important;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
@@ -491,37 +496,46 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label p {
 /* ---------- GENERIC CARD ---------- */
 
 .gcard {
-    background: var(--surface);
+    background: var(--surface) !important;
     border-radius: var(--radius-md);
     padding: 26px 28px;
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border) !important;
     height: 100%;
+    box-sizing: border-box;
 }
 
 /* Real Streamlit containers (st.container(key=...)) sharing the "card-"
    key prefix all get the same card treatment applied to the actual
    wrapping element Streamlit renders. */
-div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-card-"] {
-    background: var(--surface);
+div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-card-"],
+div[data-testid="stVerticalBlock"][class*="st-key-card-"],
+div[class*="st-key-card-"] {
+    background: var(--surface) !important;
     border-radius: var(--radius-md);
     padding: 26px 28px;
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border) !important;
     height: 100%;
+    box-sizing: border-box;
 }
 
 /* Quick-action / nav cards get a hover lift */
-div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"] {
-    background: var(--surface);
+div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"],
+div[data-testid="stVerticalBlock"][class*="st-key-qa-"],
+div[class*="st-key-qa-"] {
+    background: var(--surface) !important;
     border-radius: var(--radius-md);
     padding: 22px 22px;
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border) !important;
     height: 100%;
+    box-sizing: border-box;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"]:hover {
+div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"]:hover,
+div[data-testid="stVerticalBlock"][class*="st-key-qa-"]:hover,
+div[class*="st-key-qa-"]:hover {
     transform: translateY(-3px);
     box-shadow: var(--shadow-md);
 }
@@ -529,12 +543,12 @@ div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"]:hover {
 .section-title {
     font-size: 22px;
     font-weight: 700;
-    color: var(--heading);
+    color: var(--heading) !important;
     margin-bottom: 4px;
 }
 .section-sub {
     font-size: 14px;
-    color: var(--muted);
+    color: var(--muted) !important;
     margin-bottom: 18px;
 }
 
@@ -548,6 +562,7 @@ div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"]:hover {
     color: #FFFFFF;
     position: relative;
     overflow: hidden;
+    box-sizing: border-box;
 }
 .result-card.healthy { background: linear-gradient(135deg, #2D6A4F 0%, #52B788 100%); }
 .result-card.diseased { background: linear-gradient(135deg, #9D2B2B 0%, #E76F51 100%); }
@@ -574,20 +589,23 @@ div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"]:hover {
 /* ---------- STAT / MINI CARDS ---------- */
 
 .stat-chip {
-    background: var(--chip-bg);
+    background: var(--chip-bg) !important;
     border-radius: var(--radius-sm);
     padding: 14px 16px;
     text-align: center;
+    border: 1px solid var(--border) !important;
+    box-sizing: border-box;
 }
-.stat-chip .num { font-size: 20px; font-weight: 700; color: var(--chip-text); font-family:'Poppins',sans-serif; }
-.stat-chip .lab { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat-chip .num { font-size: 20px; font-weight: 700; color: var(--chip-text) !important; font-family:'Poppins',sans-serif; }
+.stat-chip .lab { font-size: 12px; color: var(--muted) !important; margin-top: 2px; }
 
 .icon-badge {
     width: 44px; height: 44px;
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 20px;
-    background: var(--chip-bg);
+    background: var(--chip-bg) !important;
+    color: var(--heading) !important;
     margin-bottom: 12px;
 }
 
@@ -616,7 +634,8 @@ div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"]:hover {
 [data-testid="stCaptionContainer"] p,
 .stRadio label p,
 div[data-testid="stFileUploaderDropzone"] *,
-div[data-testid="stAlert"] p {
+div[data-testid="stAlert"] p,
+div[data-testid="stTextInput"] label p {
     color: var(--text) !important;
 }
 
@@ -636,9 +655,10 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
     justify-content: space-between;
     padding: 14px 18px;
     border-radius: var(--radius-sm);
-    background: var(--hist-row-bg);
-    border: 1px solid var(--border);
+    background: var(--hist-row-bg) !important;
+    border: 1px solid var(--border) !important;
     margin-bottom: 10px;
+    box-sizing: border-box;
 }
 .hist-left { display: flex; align-items: center; gap: 12px; }
 .hist-pill {
@@ -649,10 +669,10 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
-.hist-pill.healthy { background: var(--pill-healthy-bg); color: var(--pill-healthy-text); }
-.hist-pill.diseased { background: var(--pill-diseased-bg); color: var(--pill-diseased-text); }
-.hist-time { color: var(--muted); font-size: 13px; }
-.hist-conf { font-weight: 700; color: var(--heading); font-family:'Poppins',sans-serif; }
+.hist-pill.healthy { background: var(--pill-healthy-bg) !important; color: var(--pill-healthy-text) !important; }
+.hist-pill.diseased { background: var(--pill-diseased-bg) !important; color: var(--pill-diseased-text) !important; }
+.hist-time { color: var(--muted) !important; font-size: 13px; }
+.hist-conf { font-weight: 700; color: var(--heading) !important; font-family:'Poppins',sans-serif; }
 
 /* ---------- GUIDELINE STEPS ---------- */
 
@@ -660,37 +680,37 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p,
     display: flex;
     gap: 14px;
     padding: 14px 0;
-    border-bottom: 1px dashed var(--border);
+    border-bottom: 1px dashed var(--border) !important;
 }
-.guide-step:last-child { border-bottom: none; }
+.guide-step:last-child { border-bottom: none !important; }
 .guide-step .num {
     flex-shrink: 0;
     width: 30px; height: 30px;
     border-radius: 50%;
-    background: var(--chip-bg);
-    color: var(--heading);
+    background: var(--chip-bg) !important;
+    color: var(--heading) !important;
     font-weight: 700;
     font-family: 'Poppins', sans-serif;
     display: flex; align-items: center; justify-content: center;
     font-size: 13px;
 }
-.guide-step .txt b { color: var(--heading); }
+.guide-step .txt b { color: var(--heading) !important; }
 
 /* ---------- MISC ---------- */
 
-hr { margin: 1.6rem 0; border-color: var(--border); }
+hr { margin: 1.6rem 0; border-color: var(--border) !important; }
 
 .stRadio > div { gap: 8px; }
 .stRadio label {
-    background: var(--surface);
-    border: 1px solid var(--border);
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
     padding: 8px 16px;
     border-radius: 999px;
 }
 
 .stButton > button {
-    background: linear-gradient(135deg, var(--leaf), var(--sprout));
-    color: white;
+    background: linear-gradient(135deg, var(--leaf), var(--sprout)) !important;
+    color: #FFFFFF !important;
     border: none;
     border-radius: 999px;
     padding: 10px 26px;
@@ -701,7 +721,7 @@ hr { margin: 1.6rem 0; border-color: var(--border); }
 .stButton > button:hover {
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
-    color: white;
+    color: #FFFFFF !important;
 }
 .stButton > button:focus-visible {
     outline: 2px solid var(--sprout);
@@ -709,36 +729,55 @@ hr { margin: 1.6rem 0; border-color: var(--border); }
 }
 
 div[data-testid="stFileUploaderDropzone"] {
-    background: var(--uploader-bg);
-    border: 2px dashed var(--uploader-border);
+    background: var(--uploader-bg) !important;
+    border: 2px dashed var(--uploader-border) !important;
     border-radius: var(--radius-md);
 }
-/* The "Browse files" button inside the dropzone isn't covered by any
-   other rule above, so it was falling back to an unstyled dark button
-   with dark text — unreadable in light mode. Force it onto the theme's
-   surface/text colors explicitly, regardless of the browser/OS color
-   scheme. */
-div[data-testid="stFileUploaderDropzone"] button {
-    background: var(--surface) !important;
+div[data-testid="stFileUploaderDropzone"] button,
+div[data-testid="stFileUploaderDropzone"] button[data-testid="baseButton-secondary"],
+div[data-testid="stFileUploaderDropzone"] button[kind="secondary"] {
+    background: linear-gradient(135deg, var(--leaf), var(--sprout)) !important;
     color: #FFFFFF !important;
-    border: 1px solid var(--border) !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 8px 18px !important;
+    font-weight: 600 !important;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-div[data-testid="stFileUploaderDropzone"] button:hover {
-    background: var(--chip-bg) !important;
+div[data-testid="stFileUploaderDropzone"] button:hover,
+div[data-testid="stFileUploaderDropzone"] button[data-testid="baseButton-secondary"]:hover,
+div[data-testid="stFileUploaderDropzone"] button[kind="secondary"]:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+    background: var(--leaf) !important;
     color: #FFFFFF !important;
 }
+div[data-testid="stFileUploaderDropzone"] button *,
+div[data-testid="stFileUploaderDropzone"] button p,
+div[data-testid="stFileUploaderDropzone"] button span {
+    color: #FFFFFF !important;
+}
+div[data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderDropzoneInstructions"] p,
+div[data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderDropzoneInstructions"] span,
+div[data-testid="stFileUploaderDropzone"] [data-testid="stFileUploaderDropzoneInstructions"] div {
+    color: var(--heading) !important;
+    font-weight: 500;
 }
 div[data-testid="stFileUploaderDropzone"] small {
     color: var(--muted) !important;
 }
-
-div[data-testid="stTextInput"] input {
-    background: var(--input-bg);
-    color: var(--text);
-    border: 1px solid var(--border);
+div[data-testid="stFileUploaderDropzone"] svg {
+    fill: var(--heading) !important;
 }
 
-img { border-radius: var(--radius-sm); }
+div[data-testid="stTextInput"] input {
+    background: var(--input-bg) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+}
+
+img { border-radius: var(--radius-sm); max-width: 100%; }
 
 /* Chart / photo panels are framed directly on the image element itself
    (never on a wrapping container) — this is what actually renders the
@@ -748,8 +787,8 @@ img { border-radius: var(--radius-sm); }
 div[data-testid="stImage"] img {
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border);
-    background: var(--surface);
+    border: 1px solid var(--border) !important;
+    background: var(--surface) !important;
 }
 
 .stProgress > div > div > div > div {
@@ -759,13 +798,13 @@ div[data-testid="stImage"] img {
 /* Toggle label readability in Settings */
 [data-testid="stWidgetLabel"] p { color: var(--text) !important; }
 
+/* Alerts / Callouts theme adherence */
+div[data-testid="stAlert"] {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+}
+
 /* ---------- MOBILE TAP RELIABILITY ---------- */
-/* Every interactive control gets an explicit, non-negotiable "you are
-   tappable" declaration. This is a safety net: nothing here should be
-   needed on a healthy page, but it guarantees no widget — most
-   importantly the dark mode toggle in Settings — can silently end up
-   visible-but-unresponsive on a touchscreen the way the old sidebar
-   collapse arrow used to. */
 button,
 [role="checkbox"],
 [role="switch"],
@@ -782,6 +821,280 @@ div[data-testid="stToggle"] * {
     pointer-events: auto !important;
 }
 
+/* ---------- MOBILE RESPONSIVE ADAPTATIONS (<= 768px) ---------- */
+@media (max-width: 768px) {
+    /* Prevent root-level horizontal overflow */
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        overflow-x: hidden !important;
+        max-width: 100vw !important;
+    }
+
+    .block-container {
+        padding-top: 0.8rem !important;
+        padding-bottom: 2.5rem !important;
+        padding-left: 0.85rem !important;
+        padding-right: 0.85rem !important;
+        max-width: 100% !important;
+    }
+
+    /* Mobile header & sidebar controls */
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+        display: block !important;
+        visibility: visible !important;
+        height: 44px !important;
+        pointer-events: none !important;
+    }
+    header[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"],
+    header[data-testid="stHeader"] [data-testid="collapsedControl"],
+    header[data-testid="stHeader"] button[data-testid="baseButton-headerNoPadding"],
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapseButton"] {
+        display: inline-flex !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        z-index: 1000001 !important;
+    }
+
+    /* Streamlit columns stack vertically in main content */
+    [data-testid="stMain"] div[data-testid="stHorizontalBlock"],
+    .main div[data-testid="stHorizontalBlock"],
+    div[data-testid="stAppViewContainer"] .main div[data-testid="stHorizontalBlock"] {
+        flex-direction: column !important;
+        flex-wrap: wrap !important;
+        gap: 14px !important;
+    }
+
+    [data-testid="stMain"] div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+    [data-testid="stMain"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"],
+    .main div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+    .main div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+
+    /* Topbar responsive adjustments */
+    .topbar {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 14px 16px !important;
+        gap: 12px !important;
+        margin-bottom: 18px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .topbar-title {
+        font-size: 19px !important;
+        gap: 8px !important;
+        word-break: break-word !important;
+    }
+
+    .topbar-sub {
+        font-size: 12px !important;
+    }
+
+    .topbar-stats {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        gap: 8px !important;
+        padding-top: 10px !important;
+        border-top: 1px solid var(--border) !important;
+    }
+
+    .topbar-stat {
+        text-align: left !important;
+        flex: 1 1 0px !important;
+    }
+
+    .topbar-stat .val {
+        font-size: 15px !important;
+    }
+
+    .topbar-stat .lab {
+        font-size: 9.5px !important;
+    }
+
+    /* Hero section */
+    .hero {
+        padding: 24px 18px !important;
+        margin-bottom: 18px !important;
+        border-radius: var(--radius-md) !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+    }
+
+    .hero-eyebrow {
+        font-size: 11px !important;
+        padding: 4px 10px !important;
+        margin-bottom: 12px !important;
+    }
+
+    .hero-title {
+        font-size: 24px !important;
+        line-height: 1.25 !important;
+        margin-bottom: 8px !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .hero-subtitle {
+        font-size: 13.5px !important;
+        line-height: 1.5 !important;
+        max-width: 100% !important;
+    }
+
+    /* Section titles & subtitles */
+    .section-title {
+        font-size: 18px !important;
+        word-break: break-word !important;
+    }
+
+    .section-sub {
+        font-size: 13px !important;
+        margin-bottom: 14px !important;
+    }
+
+    /* Generic cards & Streamlit container cards */
+    .gcard,
+    div[class*="st-key-card-"],
+    div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-card-"],
+    div[data-testid="stVerticalBlock"][class*="st-key-card-"],
+    div[class*="st-key-qa-"],
+    div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"],
+    div[data-testid="stVerticalBlock"][class*="st-key-qa-"] {
+        padding: 16px 14px !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Result Card */
+    .result-card {
+        padding: 20px 16px !important;
+        border-radius: var(--radius-md) !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .result-badge {
+        font-size: 11.5px !important;
+        padding: 4px 10px !important;
+        margin-bottom: 10px !important;
+    }
+
+    .result-label {
+        font-size: 22px !important;
+        line-height: 1.25 !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        margin-bottom: 6px !important;
+    }
+
+    .result-confidence {
+        font-size: 14px !important;
+    }
+
+    /* Stat chips */
+    .stat-chip {
+        padding: 12px 10px !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+    }
+
+    .stat-chip .num {
+        font-size: 16px !important;
+    }
+
+    .stat-chip .lab {
+        font-size: 10.5px !important;
+    }
+
+    /* Prediction History */
+    .hist-row {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 12px 14px !important;
+        gap: 8px !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+    }
+
+    .hist-left {
+        width: 100% !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+
+    .hist-pill {
+        font-size: 11px !important;
+        padding: 3px 9px !important;
+    }
+
+    .hist-time {
+        font-size: 11.5px !important;
+        margin-left: auto !important;
+    }
+
+    .hist-conf {
+        font-size: 13px !important;
+        align-self: flex-start !important;
+    }
+
+    /* Images and charts */
+    img,
+    div[data-testid="stImage"],
+    div[data-testid="stImage"] img,
+    div[data-testid="stPyplot"],
+    div[data-testid="stPyplot"] img,
+    div[data-testid="stPyplot"] svg {
+        max-width: 100% !important;
+        height: auto !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Buttons & Inputs */
+    .stButton > button {
+        width: 100% !important;
+        padding: 10px 18px !important;
+        font-size: 14px !important;
+        box-sizing: border-box !important;
+    }
+
+    div[data-testid="stTextInput"] input {
+        font-size: 14px !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+    }
+
+    .stRadio div[role="radiogroup"] {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+
+    .stRadio label {
+        padding: 6px 12px !important;
+        font-size: 13px !important;
+    }
+
+    .guide-step {
+        gap: 10px !important;
+        padding: 10px 0 !important;
+    }
+
+    .legend-row {
+        gap: 8px !important;
+        font-size: 13px !important;
+    }
+}
+
 </style>
 """
 
@@ -796,19 +1109,8 @@ st.markdown(_root_vars + _static_css, unsafe_allow_html=True)
 #    and the resize handle survive Streamlit reruns rebuilding parts of
 #    the page.
 #
-# 2. Mobile tap reliability — the previous version of the chrome-hider ran
-#    a full `document.querySelectorAll('button, span, div')` scan
-#    synchronously on *every single* DOM mutation, plus every 400ms on a
-#    timer. Streamlit reruns mutate large parts of the DOM at once
-#    (including right when a widget like the dark mode toggle is tapped),
-#    so that expensive scan was firing repeatedly in the exact window
-#    between touchstart and touchend on mobile — competing with, and
-#    sometimes winning against, the browser's own tap-to-click handling.
-#    That's the most likely cause of taps on real widgets landing as
-#    "visible but dead". Coalescing bursts of mutations into a single
-#    deferred (requestAnimationFrame) pass, and narrowing the stray
-#    "Deploy" text scan to just inside <header> instead of the whole
-#    document, removes that contention.
+# 2. Mobile tap reliability — narrowed the stray "Deploy" text scan to
+#    just inside <header> instead of the whole document, removing contention.
 #
 # 3. The resize handle (and the --sidebar-width it controls) only matters
 #    once the sidebar is forced open on desktop widths — see the
@@ -851,28 +1153,30 @@ components.html(
 
         function hideStreamlitChrome(doc) {
             var selectors = [
-                'header', '[data-testid="stHeader"]', '[data-testid="stToolbar"]',
+                '[data-testid="stToolbar"]',
                 '[data-testid="stDecoration"]', '[data-testid="stStatusWidget"]',
                 '[data-testid="stAppDeployButton"]', '[data-testid="stToolbarActions"]',
                 '[data-testid="stAppToolbar"]'
             ];
+            if (isDesktopWidth()) {
+                selectors.push('header', '[data-testid="stHeader"]');
+            }
             doc.querySelectorAll(selectors.join(',')).forEach(function (el) {
                 el.style.setProperty('display', 'none', 'important');
                 el.style.setProperty('visibility', 'hidden', 'important');
                 el.style.setProperty('pointer-events', 'none', 'important');
                 el.style.setProperty('height', '0px', 'important');
             });
-            // Scoped to inside <header> only (a handful of elements) instead
-            // of the previous document-wide button/span/div scan — same
-            // result, far cheaper, and can never compete with a tap on a
-            // real widget elsewhere on the page.
-            var header = doc.querySelector('header');
-            if (header) {
-                header.querySelectorAll('button, span, div').forEach(function (el) {
-                    if (el.children.length === 0 && el.textContent.trim() === 'Deploy') {
-                        (el.closest('header') || el).style.setProperty('display', 'none', 'important');
-                    }
-                });
+            // Scoped to inside <header> only on desktop (a handful of elements)
+            if (isDesktopWidth()) {
+                var header = doc.querySelector('header');
+                if (header) {
+                    header.querySelectorAll('button, span, div').forEach(function (el) {
+                        if (el.children.length === 0 && el.textContent.trim() === 'Deploy') {
+                            (el.closest('header') || el).style.setProperty('display', 'none', 'important');
+                        }
+                    });
+                }
             }
         }
 
