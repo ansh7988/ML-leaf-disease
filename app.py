@@ -233,6 +233,15 @@ div[data-testid="stStatusWidget"],
         visibility: hidden !important;
         height: 0 !important;
     }
+    div[class*="st-key-mobile-nav-container"],
+    div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-nav-container"],
+    div[data-testid="stVerticalBlock"][class*="st-key-mobile-nav-container"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
     section[data-testid="stSidebar"] {
         transform: none !important;
         visibility: visible !important;
@@ -1093,6 +1102,62 @@ div[data-testid="stToggle"] * {
         gap: 8px !important;
         font-size: 13px !important;
     }
+
+    /* Mobile Navigation Drawer / Menu */
+    div[class*="st-key-mobile-nav-container"],
+    div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-nav-container"],
+    div[data-testid="stVerticalBlock"][class*="st-key-mobile-nav-container"] {
+        display: block !important;
+        margin-bottom: 12px !important;
+        width: 100% !important;
+    }
+
+    div[data-testid="stPopover"] {
+        width: 100% !important;
+    }
+
+    div[data-testid="stPopover"] > button {
+        background: var(--surface) !important;
+        color: var(--heading) !important;
+        border: 1.5px solid var(--border) !important;
+        border-radius: var(--radius-sm) !important;
+        padding: 11px 16px !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        box-shadow: var(--shadow-sm) !important;
+        width: 100% !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+    }
+
+    div[data-testid="stPopover"] > button:hover {
+        background: var(--chip-bg) !important;
+        border-color: var(--sprout) !important;
+    }
+
+    div[data-testid="stPopover"] > button p,
+    div[data-testid="stPopover"] > button span,
+    div[data-testid="stPopover"] > button div {
+        color: var(--heading) !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+    }
+
+    div[data-testid="stPopoverBody"] {
+        background: var(--surface) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: var(--radius-md) !important;
+        box-shadow: var(--shadow-md) !important;
+        padding: 14px !important;
+    }
+
+    div[data-testid="stPopoverBody"] button {
+        margin-bottom: 6px !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        font-weight: 600 !important;
+    }
 }
 
 </style>
@@ -1320,6 +1385,28 @@ def topbar(icon, title, subtitle, history):
     total = len(history)
     healthy = sum(1 for h in history if h["result"].lower() == "healthy")
     last = history[-1] if total else None
+    current_page = st.session_state.get("nav_radio", NAV_ITEMS[0])
+
+    # Obvious mobile menu / drawer control — visible only on mobile (<= 768px), hidden on desktop
+    with st.container(key="mobile-nav-container"):
+        with st.popover(f"🧭 Menu · {current_page}", use_container_width=True):
+            st.markdown(
+                """
+                <div style="font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; color:var(--heading); margin-bottom:8px;">
+                    🌿 PlantGuard Navigation
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            for item in NAV_ITEMS:
+                is_active = (item == current_page)
+                if st.button(
+                    item,
+                    key=f"mob_nav_{item}",
+                    use_container_width=True,
+                    type="primary" if is_active else "secondary"
+                ):
+                    go_to(item)
 
     stats_html = f"""
         <div class="topbar-stat">
