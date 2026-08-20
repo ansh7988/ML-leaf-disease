@@ -51,6 +51,7 @@ _DEFAULTS = {
     # the Settings page (and therefore the toggle widget) isn't the one
     # currently being rendered.
     "dark_mode_pref": False,
+    "mobile_menu_open": False,
     "leaf_image_bytes": None,
     "leaf_image_name": None,
     "leaf_image_hash": None,
@@ -235,7 +236,10 @@ div[data-testid="stStatusWidget"],
     }
     div[class*="st-key-mobile-nav-container"],
     div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-nav-container"],
-    div[data-testid="stVerticalBlock"][class*="st-key-mobile-nav-container"] {
+    div[data-testid="stVerticalBlock"][class*="st-key-mobile-nav-container"],
+    div[class*="st-key-mobile-menu-drawer"],
+    div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-menu-drawer"],
+    div[data-testid="stVerticalBlock"][class*="st-key-mobile-menu-drawer"] {
         display: none !important;
         visibility: hidden !important;
         height: 0 !important;
@@ -1103,7 +1107,7 @@ div[data-testid="stToggle"] * {
         font-size: 13px !important;
     }
 
-    /* Mobile Navigation Drawer / Menu */
+    /* Mobile Navigation Button & Drawer */
     div[class*="st-key-mobile-nav-container"],
     div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-nav-container"],
     div[data-testid="stVerticalBlock"][class*="st-key-mobile-nav-container"] {
@@ -1112,11 +1116,7 @@ div[data-testid="stToggle"] * {
         width: 100% !important;
     }
 
-    div[data-testid="stPopover"] {
-        width: 100% !important;
-    }
-
-    div[data-testid="stPopover"] > button {
+    div[class*="st-key-mobile_menu_toggle_btn"] > button {
         background: var(--surface) !important;
         color: var(--heading) !important;
         border: 1.5px solid var(--border) !important;
@@ -1131,32 +1131,38 @@ div[data-testid="stToggle"] * {
         align-items: center !important;
     }
 
-    div[data-testid="stPopover"] > button:hover {
+    div[class*="st-key-mobile_menu_toggle_btn"] > button:hover {
         background: var(--chip-bg) !important;
         border-color: var(--sprout) !important;
     }
 
-    div[data-testid="stPopover"] > button p,
-    div[data-testid="stPopover"] > button span,
-    div[data-testid="stPopover"] > button div {
+    div[class*="st-key-mobile_menu_toggle_btn"] > button * {
         color: var(--heading) !important;
         font-weight: 700 !important;
         font-size: 15px !important;
     }
 
-    div[data-testid="stPopoverBody"] {
+    div[class*="st-key-mobile-menu-drawer"],
+    div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-menu-drawer"],
+    div[data-testid="stVerticalBlock"][class*="st-key-mobile-menu-drawer"] {
         background: var(--surface) !important;
         border: 1px solid var(--border) !important;
         border-radius: var(--radius-md) !important;
         box-shadow: var(--shadow-md) !important;
-        padding: 14px !important;
+        padding: 14px 14px 8px 14px !important;
+        margin-top: 6px !important;
+        margin-bottom: 14px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
     }
 
-    div[data-testid="stPopoverBody"] button {
+    div[class*="st-key-mobile-menu-drawer"] button {
         margin-bottom: 6px !important;
         text-align: left !important;
         justify-content: flex-start !important;
         font-weight: 600 !important;
+        width: 100% !important;
+        padding: 10px 14px !important;
     }
 }
 
@@ -1378,6 +1384,7 @@ def go_to(nav_label):
     *next* run, before the widget is created.
     """
     st.session_state["pending_nav"] = nav_label
+    st.session_state["mobile_menu_open"] = False
     st.rerun()
 
 
@@ -1387,26 +1394,37 @@ def topbar(icon, title, subtitle, history):
     last = history[-1] if total else None
     current_page = st.session_state.get("nav_radio", NAV_ITEMS[0])
 
-    # Obvious mobile menu / drawer control — visible only on mobile (<= 768px), hidden on desktop
+    if "mobile_menu_open" not in st.session_state:
+        st.session_state["mobile_menu_open"] = False
+
+    # Mobile navigation control — visible only on mobile (<= 768px), hidden on desktop
     with st.container(key="mobile-nav-container"):
-        with st.popover(f"🧭 Menu · {current_page}", use_container_width=True):
-            st.markdown(
-                """
-                <div style="font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; color:var(--heading); margin-bottom:8px;">
-                    🌿 PlantGuard Navigation
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-            for item in NAV_ITEMS:
-                is_active = (item == current_page)
-                if st.button(
-                    item,
-                    key=f"mob_nav_{item}",
-                    use_container_width=True,
-                    type="primary" if is_active else "secondary"
-                ):
-                    go_to(item)
+        is_open = st.session_state.get("mobile_menu_open", False)
+        toggle_icon = "▲" if is_open else "▼"
+        if st.button(f"🧭 Menu · {current_page} {toggle_icon}", key="mobile_menu_toggle_btn", use_container_width=True):
+            st.session_state["mobile_menu_open"] = not is_open
+            st.rerun()
+
+        if st.session_state.get("mobile_menu_open", False):
+            with st.container(key="mobile-menu-drawer"):
+                st.markdown(
+                    """
+                    <div style="font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; color:var(--heading); margin-bottom:8px; padding-top:2px;">
+                        🌿 PlantGuard Navigation
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+                for item in NAV_ITEMS:
+                    is_active = (item == current_page)
+                    if st.button(
+                        item,
+                        key=f"mob_nav_{item}",
+                        use_container_width=True,
+                        type="primary" if is_active else "secondary"
+                    ):
+                        st.session_state["mobile_menu_open"] = False
+                        go_to(item)
 
     stats_html = f"""
         <div class="topbar-stat">
