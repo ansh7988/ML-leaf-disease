@@ -1,9 +1,11 @@
 import streamlit as st
+from src.database import (login_user , create_user, save_prediction, get_user_predictions, clear_user_predictions)
 import streamlit.components.v1 as components
 import tempfile
 import os
 import io
 import hashlib
+from auth import show_auth
 import matplotlib.pyplot as plt
 from gradcam import make_gradcam
 from src.predict import predict_leaf
@@ -12,6 +14,23 @@ from weather import get_weather
 from weather_risk import analyze_weather
 if "predictions" not in st.session_state:
     st.session_state["predictions"] = []
+
+# ==================================================
+# AUTHENTICATION SESSION
+# ==================================================
+
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if "user_id" not in st.session_state:
+    st.session_state["user_id"] = None
+
+if "user_name" not in st.session_state:
+    st.session_state["user_name"] = None
+    
+if not st.session_state["logged_in"]:
+    show_auth()
+    st.stop()
 
 CLASS_NAMES = [
     "Healthy",
@@ -1507,7 +1526,7 @@ with st.sidebar:
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    _history_preview = get_prediction_history()
+    _history_preview = get_user_predictions(st.session_state["user_id"])
     _total_scans = len(_history_preview)
     _healthy_scans = sum(1 for h in _history_preview if h["result"].lower() == "healthy")
 
@@ -1548,7 +1567,7 @@ active_page = st.session_state.get("nav_radio", NAV_ITEMS[0])
 # ==================================================
 
 def render_home():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("🏠", "Dashboard Overview", "A quick snapshot of your plant health monitoring.", history)
 
     st.markdown(
@@ -1669,7 +1688,7 @@ def render_home():
 # ==================================================
 
 def render_disease_detection():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("🔬", "Disease Detection", "Upload or capture a leaf photo for an instant AI diagnosis.", history)
 
     st.markdown('<div class="section-title">🔍 Choose Analysis Method</div>', unsafe_allow_html=True)
@@ -1719,8 +1738,11 @@ def render_disease_detection():
             with st.spinner("Analyzing leaf..."):
                 result, confidence, predictions = predict_leaf(image_path)
 
+            save_prediction(st.session_state["user_id"],image_path, result, confidence)
+
             with st.spinner("Generating AI visual.."):
                 gradcam_image = make_gradcam(image_path)
+            
 
             st.session_state["leaf_image_bytes"] = image_bytes
             st.session_state["leaf_image_name"] = getattr(image_file, "name", "leaf.jpg")
@@ -1810,7 +1832,7 @@ def render_disease_detection():
 # ==================================================
 
 def render_confidence_graph():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("📈", "Confidence Graph", "A closer look at how the model arrived at its decision.", history)
 
     if st.session_state["pred_result"] is None:
@@ -1965,7 +1987,7 @@ def render_confidence_graph():
 # ==================================================
 
 def render_gradcam_heatmap():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("🔥", "Grad-CAM Heatmap", "See exactly which regions of the leaf drove the model's decision.", history)
 
     if st.session_state["gradcam_image"] is None:
@@ -2021,7 +2043,7 @@ def render_gradcam_heatmap():
 # ==================================================
 
 def render_weather_risk():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("🌦️", "Weather & Risk", "Live conditions and plant-care guidance for your location.", history)
 
     # Page-scoped spacing fixes for this page only. These rules are only
@@ -2186,7 +2208,7 @@ def render_weather_risk():
 # ==================================================
 
 def render_guidelines():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("📋", "Guidelines", "How the tool works, and how to get the most reliable results.", history)
 
     col1, col2 = st.columns(2)
@@ -2266,7 +2288,7 @@ def render_guidelines():
 # ==================================================
 
 def render_settings():
-    history = get_prediction_history()
+    history = get_user_predictions(st.session_state["user_id"])
     topbar("⚙️", "Settings", "Appearance and data preferences for this session.", history)
 
     col1, col2 = st.columns(2)
@@ -2342,7 +2364,7 @@ def render_settings():
 
             st.write("")
             if st.button("🗑️ Clear Prediction History"):
-                clear_prediction_history()
+                clear_user_predictions(st.session_state["user_id"])
                 st.success("Prediction history cleared.")
                 st.rerun()
 
