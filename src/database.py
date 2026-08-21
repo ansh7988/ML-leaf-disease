@@ -50,23 +50,29 @@ def create_user(name, email, password):
     conn = get_connection()
     cur = conn.cursor()
 
-    hashed_password = hash_password(password)
+    try:
+        hashed_password = hash_password(password)
 
-    cur.execute(
-        """
-        INSERT INTO users (name, email, password_hash)
-        VALUES (%s, %s, %s)
-        """,
-        (name, email, hashed_password)
-    )
+        cur.execute(
+            """
+            INSERT INTO users (name, email, password_hash)
+            VALUES (%s, %s, %s)
+            """,
+            (name, email, hashed_password)
+        )
 
-    conn.commit()
+        conn.commit()
 
-    cur.close()
-    conn.close()
+        return True
 
-    print("User created successfully!")
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
+        return False
 
+    finally:
+        cur.close()
+        conn.close()
+        
 def login_user(email, password):
 
     conn = get_connection()
