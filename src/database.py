@@ -9,16 +9,6 @@ def get_connection():
         st.secrets["DATABASE_URL"]
     )
 
-
-def get_connection():
-    return psycopg.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD")
-    )
-
 def get_users():
     conn = get_connection()
 
@@ -108,28 +98,6 @@ def login_user(email, password):
         }
 
     return None
-
-def get_user_predictions(user_id):
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT *
-        FROM predictions
-        WHERE user_id = %s
-        ORDER BY id DESC
-        """,
-        (user_id,)
-    )
-
-    predictions = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return predictions
 
 def save_prediction(user_id, image_path, predicted_disease, confidence):
 
