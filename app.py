@@ -1,6 +1,15 @@
 import streamlit as st
-from src.database import (login_user , create_user, save_prediction, get_user_predictions, clear_user_predictions)
-import streamlit.components.v1 as components
+from src.database import (
+    login_user,
+    create_user,
+    save_prediction,
+    get_user_predictions,
+    clear_user_predictions,
+    get_user_profile,
+    update_user_name,
+    update_user_password,
+)
+from src.disease_info import DISEASE_INFO
 import tempfile
 import os
 import io
@@ -9,7 +18,6 @@ from auth import show_auth
 import matplotlib.pyplot as plt
 from gradcam import make_gradcam
 from src.predict import predict_leaf
-from src.prediction_history import get_prediction_history, clear_prediction_history
 from weather import get_weather
 from weather_risk import analyze_weather
 if "predictions" not in st.session_state:
@@ -289,34 +297,6 @@ div[data-testid="stStatusWidget"],
     }
 }
 
-/* Drag-to-resize handle on the sidebar's right edge. Sits just outside the
-   visible border so it's easy to grab without stealing space from the
-   sidebar's own content, and is wired up by the script further down. */
-.leaf-sidebar-resize-handle {
-    position: absolute;
-    top: 0;
-    right: -5px;
-    width: 10px;
-    height: 100%;
-    cursor: ew-resize;
-    touch-action: none;
-    z-index: 999999;
-    background: transparent;
-}
-.leaf-sidebar-resize-handle::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 4px;
-    width: 2px;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.16);
-    transition: background 0.15s ease;
-}
-.leaf-sidebar-resize-handle:hover::after,
-.leaf-sidebar-resize-handle.dragging::after {
-    background: var(--sprout);
-}
 
 .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
     background:
@@ -1190,193 +1170,6 @@ div[data-testid="stToggle"] * {
 
 st.markdown(_root_vars + _static_css, unsafe_allow_html=True)
 
-# JS-based fallback for hiding Streamlit's own header/Deploy button, PLUS
-# the sidebar drag-to-resize handle. Both live in one throttled loop for
-# two reasons:
-#
-# 1. Persistence — this walks the real page DOM (via window.parent, since
-#    components.html renders inside an iframe), so both the chrome-hiding
-#    and the resize handle survive Streamlit reruns rebuilding parts of
-#    the page.
-#
-# 2. Mobile tap reliability — narrowed the stray "Deploy" text scan to
-#    just inside <header> instead of the whole document, removing contention.
-#
-# 3. The resize handle (and the --sidebar-width it controls) only matters
-#    once the sidebar is forced open on desktop widths — see the
-#    `@media (min-width: 769px)` block above — so it is skipped entirely
-#    on mobile, where it would otherwise sit on top of the native
-#    collapsible sidebar and get in the way of opening/closing it.
-components.html(
-    """
-    <script>
-    (function () {
-        var MIN_WIDTH = 220;
-        var MAX_WIDTH = 560;
-        var DESKTOP_BREAKPOINT = 769;
-
-        function isDesktopWidth() {
-            try {
-                return window.parent.innerWidth >= DESKTOP_BREAKPOINT;
-            } catch (e) {
-                return true;
-            }
-        }
-
-        function applyWidth(px) {
-            try {
-                window.parent.document.documentElement.style.setProperty('--sidebar-width', px + 'px');
-            } catch (e) {}
-        }
-
-        function getStoredWidth() {
-            if (typeof window.parent.__leafSidebarWidthPx !== 'number') {
-                window.parent.__leafSidebarWidthPx = 336; // 21rem @ 16px root
-            }
-            return window.parent.__leafSidebarWidthPx;
-        }
-
-        function setStoredWidth(px) {
-            window.parent.__leafSidebarWidthPx = px;
-            applyWidth(px);
-        }
-
-        function hideStreamlitChrome(doc) {
-            var selectors = [
-                '[data-testid="stToolbar"]',
-                '[data-testid="stDecoration"]', '[data-testid="stStatusWidget"]',
-                '[data-testid="stAppDeployButton"]', '[data-testid="stToolbarActions"]',
-                '[data-testid="stAppToolbar"]'
-            ];
-            if (isDesktopWidth()) {
-                selectors.push('header', '[data-testid="stHeader"]');
-            }
-            doc.querySelectorAll(selectors.join(',')).forEach(function (el) {
-                el.style.setProperty('display', 'none', 'important');
-                el.style.setProperty('visibility', 'hidden', 'important');
-                el.style.setProperty('pointer-events', 'none', 'important');
-                el.style.setProperty('height', '0px', 'important');
-            });
-            // Scoped to inside <header> only on desktop (a handful of elements)
-            if (isDesktopWidth()) {
-                var header = doc.querySelector('header');
-                if (header) {
-                    header.querySelectorAll('button, span, div').forEach(function (el) {
-                        if (el.children.length === 0 && el.textContent.trim() === 'Deploy') {
-                            (el.closest('header') || el).style.setProperty('display', 'none', 'important');
-                        }
-                    });
-                }
-            }
-        }
-
-        function ensureResizeHandle(doc) {
-            // The drag-to-resize handle (and the forced sidebar width it
-            // drives) is a desktop-only affordance — see the
-            // `@media (min-width: 769px)` rule in the injected CSS. On
-            // mobile widths the sidebar uses Streamlit's own native
-            // collapsible/overlay behavior instead, so skip wiring the
-            // handle up (and remove it if the window was resized down
-            // from desktop to mobile) to avoid it sitting on top of, and
-            // intercepting taps meant for, that native toggle.
-            var sidebar = doc.querySelector('section[data-testid="stSidebar"]');
-            if (!sidebar) return;
-
-            if (!isDesktopWidth()) {
-                var existing = sidebar.querySelector(':scope > .leaf-sidebar-resize-handle');
-                if (existing) existing.remove();
-                return;
-            }
-
-            // Re-assert the current width even if the sidebar's inner DOM
-            // was rebuilt by a Streamlit rerun.
-            applyWidth(getStoredWidth());
-
-            if (sidebar.querySelector(':scope > .leaf-sidebar-resize-handle')) return;
-
-            var handle = doc.createElement('div');
-            handle.className = 'leaf-sidebar-resize-handle';
-            handle.setAttribute('aria-hidden', 'true');
-            sidebar.appendChild(handle);
-
-            var dragging = false;
-            var startX = 0;
-            var startWidth = 0;
-
-            function onPointerMove(e) {
-                if (!dragging) return;
-                var x = e.touches ? e.touches[0].clientX : e.clientX;
-                var next = startWidth + (x - startX);
-                if (next < MIN_WIDTH) next = MIN_WIDTH;
-                if (next > MAX_WIDTH) next = MAX_WIDTH;
-                setStoredWidth(next);
-            }
-
-            function stopDrag() {
-                if (!dragging) return;
-                dragging = false;
-                handle.classList.remove('dragging');
-                doc.body.style.removeProperty('cursor');
-                doc.body.style.removeProperty('user-select');
-                doc.removeEventListener('mousemove', onPointerMove);
-                doc.removeEventListener('mouseup', stopDrag);
-                doc.removeEventListener('touchmove', onPointerMove);
-                doc.removeEventListener('touchend', stopDrag);
-            }
-
-            function startDrag(e) {
-                dragging = true;
-                startX = e.touches ? e.touches[0].clientX : e.clientX;
-                startWidth = getStoredWidth();
-                handle.classList.add('dragging');
-                doc.body.style.setProperty('cursor', 'ew-resize', 'important');
-                doc.body.style.setProperty('user-select', 'none', 'important');
-                doc.addEventListener('mousemove', onPointerMove);
-                doc.addEventListener('mouseup', stopDrag);
-                doc.addEventListener('touchmove', onPointerMove, { passive: true });
-                doc.addEventListener('touchend', stopDrag);
-                e.preventDefault();
-            }
-
-            handle.addEventListener('mousedown', startDrag);
-            handle.addEventListener('touchstart', startDrag, { passive: false });
-        }
-
-        var scheduled = false;
-        function runMaintenance() {
-            try {
-                var doc = window.parent.document;
-                hideStreamlitChrome(doc);
-                ensureResizeHandle(doc);
-            } catch (e) { /* parent not ready yet — next tick will retry */ }
-        }
-
-        function scheduleMaintenance() {
-            if (scheduled) return;
-            scheduled = true;
-            requestAnimationFrame(function () {
-                scheduled = false;
-                runMaintenance();
-            });
-        }
-
-        scheduleMaintenance();
-        try {
-            new MutationObserver(scheduleMaintenance)
-                .observe(window.parent.document.body, { childList: true, subtree: true });
-        } catch (e) {}
-        try {
-            window.parent.addEventListener('resize', scheduleMaintenance);
-        } catch (e) {}
-        setInterval(scheduleMaintenance, 1000);
-    })();
-    </script>
-    """,
-    height=0,
-    width=0,
-)
-
-
 # ==================================================
 # SHARED HELPERS
 # ==================================================
@@ -1388,6 +1181,7 @@ NAV_ITEMS = [
     "🔥 Grad-CAM Heatmap",
     "🌦️ Weather & Risk",
     "📋 Guidelines",
+    "👤 My Profile",
     "⚙️ Settings",
 ]
 
@@ -1493,6 +1287,12 @@ def result_guard(nav_label, message="Run a leaf analysis first to see this page 
 
 
 # ==================================================
+# LOAD USER HISTORY ONCE PER RERUN
+# ==================================================
+history = get_user_predictions(st.session_state["user_id"])
+
+
+# ==================================================
 # SIDEBAR
 # ==================================================
 
@@ -1526,7 +1326,7 @@ with st.sidebar:
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    _history_preview = get_user_predictions(st.session_state["user_id"])
+    _history_preview = history
     _total_scans = len(_history_preview)
     _healthy_scans = sum(1 for h in _history_preview if h["result"].lower() == "healthy")
 
@@ -1553,8 +1353,7 @@ with st.sidebar:
     st.markdown(
         """<div class="sidebar-footer">
         Powered by MobileNetV2 &amp; Grad-CAM.<br>
-        For agronomic guidance only — consult an
-        expert for treatment decisions.
+        AI-powered plant health analysis and disease insights.
         </div>""",
         unsafe_allow_html=True
     )
@@ -1566,8 +1365,7 @@ active_page = st.session_state.get("nav_radio", NAV_ITEMS[0])
 # PAGE: HOME
 # ==================================================
 
-def render_home():
-    history = get_user_predictions(st.session_state["user_id"])
+def render_home(history):
     topbar("🏠", "Dashboard Overview", "A quick snapshot of your plant health monitoring.", history)
 
     st.markdown(
@@ -1626,7 +1424,7 @@ def render_home():
         ("🔥", "Grad-CAM Heatmap", "Visualize exactly which regions of the leaf the model focused on."),
         ("🌦️", "Weather & Risk", "Check current conditions and get plant-care recommendations."),
         ("📋", "Guidelines", "Tips for reliable photos and how to read your results."),
-        ("⚙️", "Settings", "Switch themes and manage your prediction history."),
+        ("⚙️", "Settings", "Switch themes and manage your appearance preferences."),
     ]
     for i, (icon, title, desc) in enumerate(overview_items):
         with overview_cols[i % 3]:
@@ -1687,8 +1485,7 @@ def render_home():
 # PAGE: DISEASE DETECTION
 # ==================================================
 
-def render_disease_detection():
-    history = get_user_predictions(st.session_state["user_id"])
+def render_disease_detection(history):
     topbar("🔬", "Disease Detection", "Upload or capture a leaf photo for an instant AI diagnosis.", history)
 
     st.markdown('<div class="section-title">🔍 Choose Analysis Method</div>', unsafe_allow_html=True)
@@ -1805,6 +1602,43 @@ def render_disease_detection():
             st.write("")
             st.progress(confidence)
 
+            if result != "Healthy" and result in DISEASE_INFO:
+
+                disease = DISEASE_INFO[result]
+
+                st.write("")
+
+                st.markdown(
+                    f"""
+                    <div class="gcard">
+                        <div class="section-title">🔍 What may be causing this?</div>
+                        <div class="section-sub">{disease["description"]}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown(
+                        '<div class="section-title" style="font-size:18px;">🔎 Possible Causes</div>',
+                        unsafe_allow_html=True
+                    )
+
+                    for cause in disease["causes"]:
+                        st.markdown(f"• {cause}")
+
+                with col2:
+                    st.markdown(
+                        '<div class="section-title" style="font-size:18px;">🛡️ Precautions</div>',
+                        unsafe_allow_html=True
+                    )
+
+                    for precaution in disease["precautions"]:
+                        st.markdown(f"• {precaution}")
+
+                    
         st.write("")
         nav_cols = st.columns(2)
         with nav_cols[0]:
@@ -1831,8 +1665,7 @@ def render_disease_detection():
 # PAGE: CONFIDENCE GRAPH
 # ==================================================
 
-def render_confidence_graph():
-    history = get_user_predictions(st.session_state["user_id"])
+def render_confidence_graph(history):
     topbar("📈", "Confidence Graph", "A closer look at how the model arrived at its decision.", history)
 
     if st.session_state["pred_result"] is None:
@@ -1986,8 +1819,7 @@ def render_confidence_graph():
 # PAGE: GRAD-CAM HEATMAP
 # ==================================================
 
-def render_gradcam_heatmap():
-    history = get_user_predictions(st.session_state["user_id"])
+def render_gradcam_heatmap(history):
     topbar("🔥", "Grad-CAM Heatmap", "See exactly which regions of the leaf drove the model's decision.", history)
 
     if st.session_state["gradcam_image"] is None:
@@ -2042,8 +1874,7 @@ def render_gradcam_heatmap():
 # PAGE: WEATHER & RISK
 # ==================================================
 
-def render_weather_risk():
-    history = get_user_predictions(st.session_state["user_id"])
+def render_weather_risk(history):
     topbar("🌦️", "Weather & Risk", "Live conditions and plant-care guidance for your location.", history)
 
     # Page-scoped spacing fixes for this page only. These rules are only
@@ -2207,8 +2038,7 @@ def render_weather_risk():
 # PAGE: GUIDELINES
 # ==================================================
 
-def render_guidelines():
-    history = get_user_predictions(st.session_state["user_id"])
+def render_guidelines(history):
     topbar("📋", "Guidelines", "How the tool works, and how to get the most reliable results.", history)
 
     col1, col2 = st.columns(2)
@@ -2275,21 +2105,255 @@ def render_guidelines():
             """
         st.markdown(legend_html, unsafe_allow_html=True)
 
-    st.write("")
-    st.info(
-        "🩺 This tool provides agronomic guidance only. High Grad-CAM attention does not "
-        "necessarily mean a region is diseased — for treatment decisions, consult a "
-        "qualified plant health expert."
+
+
+
+# ==================================================
+# PAGE: MY PROFILE
+# ==================================================
+
+def render_my_profile(history):
+    user_id = st.session_state["user_id"]
+    topbar(
+        "👤",
+        "My Profile",
+        "Manage your account, security, prediction history, and session.",
+        history
     )
+
+    profile = get_user_profile(user_id)
+
+    if not profile:
+        st.error("Unable to load your profile. Please sign in again.")
+        return
+
+    user_name = profile["name"]
+    user_email = profile["email"]
+    account_id = profile["id"]
+    created_at = profile.get("created_at")
+
+    member_line = (
+        f"<div><b>Member since:</b> {created_at}</div>"
+        if created_at else ""
+    )
+
+    st.markdown(
+        f"""
+        <div class="gcard" style="margin-bottom:18px;">
+            <div style="font-size:34px; margin-bottom:8px;">👤</div>
+            <div class="section-title" style="margin-bottom:6px;">{user_name}</div>
+            <div class="section-sub" style="margin-bottom:14px;">{user_email}</div>
+            <div style="display:flex; gap:24px; flex-wrap:wrap; font-size:13px;">
+                <div><b>User ID:</b> #{account_id}</div>
+                <div><b>Status:</b> Active</div>
+                {member_line}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    tab_account, tab_security, tab_history = st.tabs(
+        ["📝 Account", "🔐 Security", "📜 Prediction History"]
+    )
+
+    with tab_account:
+        with st.container(key="card-profile-account"):
+            st.markdown(
+                '<div class="section-title" style="font-size:18px;">Account Details</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                '<div class="section-sub">Update your display name. Your email address remains your account login.</div>',
+                unsafe_allow_html=True
+            )
+
+            with st.form("update_name_form"):
+                new_name = st.text_input(
+                    "Full Name",
+                    value=user_name,
+                    key="profile_name_input"
+                )
+                st.text_input(
+                    "Email",
+                    value=user_email,
+                    disabled=True,
+                    key="profile_email_display"
+                )
+
+                update_name_submit = st.form_submit_button(
+                    "Save Name Changes",
+                    use_container_width=True
+                )
+
+                if update_name_submit:
+                    new_name = new_name.strip()
+
+                    if not new_name:
+                        st.warning("Name cannot be empty.")
+                    elif new_name == user_name:
+                        st.info("No changes were made.")
+                    else:
+                        success, message = update_user_name(user_id, new_name)
+
+                        if success:
+                            st.session_state["user_name"] = new_name
+                            st.success(message)
+                            st.rerun()
+                        else:
+                            st.error(message)
+
+    with tab_security:
+        with st.container(key="card-profile-security"):
+            st.markdown(
+                '<div class="section-title" style="font-size:18px;">Change Password</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                '<div class="section-sub">Use at least 6 characters for your new password.</div>',
+                unsafe_allow_html=True
+            )
+
+            with st.form("change_password_form"):
+                current_password = st.text_input(
+                    "Current Password",
+                    type="password",
+                    key="profile_current_password"
+                )
+                new_password = st.text_input(
+                    "New Password",
+                    type="password",
+                    key="profile_new_password"
+                )
+                confirm_password = st.text_input(
+                    "Confirm New Password",
+                    type="password",
+                    key="profile_confirm_password"
+                )
+
+                update_password_submit = st.form_submit_button(
+                    "Update Password",
+                    use_container_width=True
+                )
+
+                if update_password_submit:
+                    if not current_password or not new_password or not confirm_password:
+                        st.warning("Please fill in all password fields.")
+                    elif len(new_password) < 6:
+                        st.error("New password must contain at least 6 characters.")
+                    elif new_password != confirm_password:
+                        st.error("New password and confirmation do not match.")
+                    else:
+                        success, message = update_user_password(
+                            user_id,
+                            current_password,
+                            new_password
+                        )
+
+                        if success:
+                            st.success(message)
+                        else:
+                            st.error(message)
+
+    with tab_history:
+        with st.container(key="card-profile-history"):
+            st.markdown(
+                '<div class="section-title" style="font-size:18px;">Your Prediction History</div>',
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                '<div class="section-sub">Only predictions associated with your account are shown here.</div>',
+                unsafe_allow_html=True
+            )
+
+            if not history:
+                st.info("You have not recorded any predictions yet.")
+            else:
+                history_sorted = history[::-1]
+                rows_html = ""
+
+                for prediction in history_sorted:
+                    result = prediction["result"]
+                    confidence = prediction["confidence"]
+                    timestamp = prediction["time"]
+
+                    if result.lower() == "healthy":
+                        icon = "🟢"
+                        pill_class = "healthy"
+                    else:
+                        icon = "🔴"
+                        pill_class = "diseased"
+
+                    rows_html += f"""
+                    <div class="hist-row">
+                        <div class="hist-left">
+                            <span style="font-size:18px;">{icon}</span>
+                            <span class="hist-pill {pill_class}">{result}</span>
+                            <span class="hist-time">🕐 {timestamp}</span>
+                        </div>
+                        <div class="hist-conf">🎯 {confidence:.2f}%</div>
+                    </div>
+                    """
+
+                st.markdown(rows_html, unsafe_allow_html=True)
+
+                if st.button(
+                    "🗑️ Clear My Prediction History",
+                    key="profile_clear_history_btn",
+                    use_container_width=True
+                ):
+                    clear_user_predictions(user_id)
+                    st.success("Your prediction history has been cleared.")
+                    st.rerun()
+
+    st.write("")
+    with st.container(key="card-profile-logout"):
+        st.markdown(
+            '<div class="section-title" style="font-size:18px;">Sign Out</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            '<div class="section-sub">End the current session on this device.</div>',
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "🚪 Log Out",
+            key="profile_logout_btn",
+            use_container_width=True
+        ):
+            keys_to_clear = [
+                "logged_in",
+                "user_id",
+                "user_name",
+                "predictions",
+                "leaf_image_bytes",
+                "leaf_image_name",
+                "leaf_image_hash",
+                "pred_result",
+                "pred_confidence",
+                "gradcam_image",
+                "current_weather",
+                "weather_analysis",
+                "pending_nav",
+                "nav_radio",
+            ]
+
+            for key in keys_to_clear:
+                st.session_state.pop(key, None)
+
+            st.session_state["logged_in"] = False
+            st.session_state["user_id"] = None
+            st.session_state["user_name"] = None
+            st.rerun()
 
 
 # ==================================================
 # PAGE: SETTINGS
 # ==================================================
 
-def render_settings():
-    history = get_user_predictions(st.session_state["user_id"])
-    topbar("⚙️", "Settings", "Appearance and data preferences for this session.", history)
+def render_settings(history):
+    topbar("⚙️", "Settings", "Appearance preferences for your PlantGuard AI experience.", history)
 
     col1, col2 = st.columns(2)
 
@@ -2317,56 +2381,12 @@ def render_settings():
             st.markdown(
                 """<div style="font-size:13.5px; line-height:1.7;">
                 Powered by MobileNetV2 &amp; Grad-CAM.<br>
-                Predictions include a confidence score and a visual
-                explanation of the regions the model focused on.<br><br>
-                For agronomic guidance only — consult an expert for
-                treatment decisions.
+                PlantGuard AI provides disease classification, confidence
+                analysis, visual explanations, and plant-care insights to
+                help users understand plant health conditions.
                 </div>""",
                 unsafe_allow_html=True
             )
-
-    st.write("")
-
-    with st.container(key="card-settings-history"):
-        st.markdown('<div class="section-title" style="font-size:18px;">📜 Prediction History</div>', unsafe_allow_html=True)
-
-        if len(history) == 0:
-            st.info("No predictions have been recorded yet.")
-        else:
-            history_sorted = history[::-1]
-            st.markdown('<div class="section-sub">🧾 Previous analyses, most recent first.</div>', unsafe_allow_html=True)
-
-            rows_html = ""
-            for prediction in history_sorted:
-                hist_result = prediction["result"]
-                hist_confidence = prediction["confidence"]
-                hist_time = prediction["time"]
-
-                if hist_result.lower() == "healthy":
-                    icon = "🟢"
-                    pill_class = "healthy"
-                else:
-                    icon = "🔴"
-                    pill_class = "diseased"
-
-                rows_html += f"""
-                <div class="hist-row">
-                    <div class="hist-left">
-                        <span style="font-size:18px;">{icon}</span>
-                        <span class="hist-pill {pill_class}">{hist_result}</span>
-                        <span class="hist-time">🕐 {hist_time}</span>
-                    </div>
-                    <div class="hist-conf">🎯 {hist_confidence:.2f}%</div>
-                </div>
-                """
-
-            st.markdown(rows_html, unsafe_allow_html=True)
-
-            st.write("")
-            if st.button("🗑️ Clear Prediction History"):
-                clear_user_predictions(st.session_state["user_id"])
-                st.success("Prediction history cleared.")
-                st.rerun()
 
 
 # ==================================================
@@ -2374,16 +2394,18 @@ def render_settings():
 # ==================================================
 
 if active_page == "🏠 Home":
-    render_home()
+    render_home(history)
 elif active_page == "🔬 Disease Detection":
-    render_disease_detection()
+    render_disease_detection(history)
 elif active_page == "📈 Confidence Graph":
-    render_confidence_graph()
+    render_confidence_graph(history)
 elif active_page == "🔥 Grad-CAM Heatmap":
-    render_gradcam_heatmap()
+    render_gradcam_heatmap(history)
 elif active_page == "🌦️ Weather & Risk":
-    render_weather_risk()
+    render_weather_risk(history)
 elif active_page == "📋 Guidelines":
-    render_guidelines()
+    render_guidelines(history)
+elif active_page == "👤 My Profile":
+    render_my_profile(history)
 elif active_page == "⚙️ Settings":
-    render_settings()
+    render_settings(history)

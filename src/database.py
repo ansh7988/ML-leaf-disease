@@ -195,3 +195,118 @@ def clear_user_predictions(user_id):
 
     cur.close()
     conn.close()
+
+# ==================================================
+# USER PROFILE FUNCTIONS
+# ==================================================
+
+def get_user_profile(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """
+            SELECT id, name, email
+            FROM users
+            WHERE id = %s
+            """,
+            (user_id,)
+        )
+
+        user = cur.fetchone()
+
+        if user is None:
+            return None
+
+        return {
+            "id": user[0],
+            "name": user[1],
+            "email": user[2]
+        }
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_user_name(user_id, new_name):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            """
+            UPDATE users
+            SET name = %s
+            WHERE id = %s
+            """,
+            (new_name, user_id)
+        )
+
+        if cur.rowcount == 0:
+            conn.rollback()
+            return False, "User account was not found."
+
+        conn.commit()
+
+        return True, "Your name has been updated successfully."
+
+    except Exception:
+        conn.rollback()
+        return False, "Unable to update your name. Please try again."
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+def update_user_password(user_id, current_password, new_password):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        # Get the current password hash
+        cur.execute(
+            """
+            SELECT password_hash
+            FROM users
+            WHERE id = %s
+            """,
+            (user_id,)
+        )
+
+        user = cur.fetchone()
+
+        if user is None:
+            return False, "User account was not found."
+
+        stored_hash = user[0]
+
+        # Verify current password first
+        if not verify_password(current_password, stored_hash):
+            return False, "Your current password is incorrect."
+
+        # Hash new password
+        new_hashed_password = hash_password(new_password)
+
+        cur.execute(
+            """
+            UPDATE users
+            SET password_hash = %s
+            WHERE id = %s
+            """,
+            (new_hashed_password, user_id)
+        )
+
+        conn.commit()
+
+        return True, "Your password has been updated successfully."
+
+    except Exception:
+        conn.rollback()
+        return False, "Unable to update your password. Please try again."
+
+    finally:
+        cur.close()
+        conn.close()
