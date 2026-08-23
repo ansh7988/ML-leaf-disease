@@ -1,6 +1,9 @@
 import os
 import streamlit as st
 import psycopg
+import re
+import psycopg.errors
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -46,28 +49,47 @@ def verify_password(password, stored_hash):
         password.encode("utf-8"),
         stored_hash.encode("utf-8")
     )
-
 def create_user(name, email, password):
 
     conn = get_connection()
     cur = conn.cursor()
 
-    hashed_password = hash_password(password)
+    try:
+        hashed_password = hash_password(password)
 
-    cur.execute(
-        """
-        INSERT INTO users (name, email, password_hash)
-        VALUES (%s, %s, %s)
-        """,
-        (name, email, hashed_password)
-    )
+        cur.execute(
+            """
+            INSERT INTO users (name, email, password_hash)
+            VALUES (%s, %s, %s)
+            RETURNING id, name
+            """,
+            (name, email, hashed_password)
+        )
 
-    conn.commit()
+        new_user = cur.fetchone()
 
-    cur.close()
-    conn.close()
+        conn.commit()
 
-    print("User created successfully!")
+        return True, {
+            "id": new_user[0],
+            "name": new_user[1]
+        }
+
+    except psycopg.errors.UniqueViolation:
+        conn.rollback()
+
+        return False, (
+            "An account with this email already exists. Please sign in instead."
+        )
+
+    except Exception:
+        conn.rollback()
+
+        return False, "Unable to create account. Please try again."
+
+    finally:
+        cur.close()
+        conn.close()
 
 def login_user(email, password):
 

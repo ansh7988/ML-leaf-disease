@@ -1,5 +1,9 @@
 import streamlit as st
 from src.database import login_user , create_user, get_user_predictions
+import re
+def is_valid_email(email):
+    pattern = r"^[a-zA-Z0-9._%+-]+@gmail\.com$"
+    return re.match(pattern, email) is not None
 def show_auth():
     _static_css = """
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -672,19 +676,63 @@ def show_auth():
                         unsafe_allow_html=True
                     )
 
-                    name = st.text_input("Full Name", placeholder="e.g. Alex Johnson", key="signup_name")
-                    email = st.text_input("Email", placeholder="name@example.com", key="signup_email")
-                    password = st.text_input("Password", type="password", placeholder="Create a secure password", key="signup_password")
+                    name = st.text_input(
+                        "Full Name",
+                        placeholder="e.g. Alex Johnson",
+                        key="signup_name"
+                    )
 
-                    if st.button("Create Account  →", key="signup_submit_btn", use_container_width=True):
-                        if not name.strip() or not email.strip() or not password:
+                    email = st.text_input(
+                        "Email",
+                        placeholder="name@gmail.com",
+                        key="signup_email"
+                    )
+
+                    password = st.text_input(
+                        "Password",
+                        type="password",
+                        placeholder="Create a secure password",
+                        key="signup_password"
+                    )
+
+                    if st.button(
+                        "Create Account  →",
+                        key="signup_submit_btn",
+                        use_container_width=True
+                    ):
+
+                        name = name.strip()
+                        email = email.strip().lower()
+
+                        # Check empty fields
+                        if not name or not email or not password:
                             st.warning("Please fill in all fields to create your account.")
+
+                        # Validate Gmail
+                        elif not is_valid_email(email):
+                            st.error("Please enter a valid Gmail address (example@gmail.com).")
+
+                        # Validate password
+                        elif len(password) < 6:
+                            st.error("Password must contain at least 6 characters.")
+
+                        # Create account
                         else:
-                            create_user(
-                                name.strip(),
-                                email.strip(),
+                            success, result = create_user(
+                                name,
+                                email,
                                 password
                             )
-                            st.success("Account created successfully! Switch to Sign In to access your account.")
+
+                            if success:
+                                # Automatically log in the new user
+                                st.session_state["logged_in"] = True
+                                st.session_state["user_id"] = result["id"]
+                                st.session_state["user_name"] = result["name"]
+
+                                st.rerun()
+
+                            else:
+                                st.error(result)
 if __name__ == "__main__":
     show_auth()
