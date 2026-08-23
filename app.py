@@ -14,12 +14,14 @@ import tempfile
 import os
 import io
 import hashlib
+from PIL import Image, ImageOps
 from auth import show_auth
 import matplotlib.pyplot as plt
 from gradcam import make_gradcam
 from src.predict import predict_leaf
 from weather import get_weather
 from weather_risk import analyze_weather
+
 if "predictions" not in st.session_state:
     st.session_state["predictions"] = []
 
@@ -63,20 +65,45 @@ st.set_page_config(
 
 
 # ==================================================
+# PROFILE IMAGE HELPER
+# ==================================================
+
+def process_profile_image(raw_bytes):
+    """
+    Optimizes uploaded profile image once during upload:
+    - Resizes to fixed thumbnail size (max 256x256)
+    - Preserves alpha channel for PNG/WEBP to prevent black background issues
+    - Returns lightweight compressed bytes
+    """
+    if not raw_bytes:
+        return None
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        try:
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+        
+        out_io = io.BytesIO()
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+            img = img.convert("RGBA")
+            img.thumbnail((256, 256), Image.Resampling.LANCZOS)
+            img.save(out_io, format="PNG", optimize=True)
+        else:
+            img = img.convert("RGB")
+            img.thumbnail((256, 256), Image.Resampling.LANCZOS)
+            img.save(out_io, format="JPEG", quality=85, optimize=True)
+            
+        return out_io.getvalue()
+    except Exception:
+        return None
+
+
+# ==================================================
 # SESSION STATE DEFAULTS
 # ==================================================
-# Navigation, theme and analysis results all live in session_state so that
-# switching pages never re-triggers the ML pipeline and every page can read
-# the same underlying result set.
 
 _DEFAULTS = {
-    # "dark_mode_pref" is the durable source of truth for the theme — a
-    # plain session_state entry that is never tied to a widget's mount
-    # lifecycle. "dark_toggle" is only the on-screen toggle in Settings;
-    # it initializes itself from — and writes back to — dark_mode_pref
-    # via the callback below, so the theme can never revert just because
-    # the Settings page (and therefore the toggle widget) isn't the one
-    # currently being rendered.
     "dark_mode_pref": False,
     "mobile_menu_open": False,
     "leaf_image_bytes": None,
@@ -87,6 +114,8 @@ _DEFAULTS = {
     "gradcam_image": None,
     "current_weather": None,
     "weather_analysis": None,
+    "profile_image_bytes": None,
+    "profile_image_hash": None,
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -98,9 +127,6 @@ st.session_state["theme"] = "dark" if st.session_state["dark_mode_pref"] else "l
 # ==================================================
 # DESIGN TOKENS
 # ==================================================
-# Brand colors stay constant across themes (used on their own colored
-# surfaces: hero, sidebar, buttons, result cards). Surface/text tokens flip
-# between the light and dark professional palettes below.
 
 FOREST = "#1B4332"
 LEAF = "#2D6A4F"
@@ -166,8 +192,6 @@ THEMES = {
 
 T = THEMES[st.session_state["theme"]]
 
-# Colors used specifically for matplotlib text (must stay legible against a
-# transparent figure sitting on top of var(--surface)).
 GRAPH_TEXT = T["text"]
 GRAPH_MUTED = T["muted"]
 GRAPH_ACCENT = T["heading"]
@@ -216,9 +240,6 @@ _root_vars = f"""
     --radius-md: 16px;
     --radius-sm: 10px;
 
-    /* Default sidebar width. The drag handle (added further down) updates
-       this variable live on the real document element, so this value is
-       only ever the starting point / fallback. */
     --sidebar-width: 21rem;
 }}
 </style>
@@ -288,8 +309,6 @@ div[data-testid="stStatusWidget"],
         visibility: visible !important;
         width: var(--sidebar-width, 21rem) !important;
     }
-    /* The collapse/expand toggle no longer serves a purpose on desktop
-       since the sidebar can't be collapsed there — hide it on desktop. */
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"],
     button[data-testid="baseButton-headerNoPadding"] {
@@ -310,14 +329,9 @@ div[data-testid="stStatusWidget"],
     padding-bottom: 3rem;
 }
 
-/* ---------- TEXT COLOR SAFETY NET ----------
-   Low-specificity fallback so nothing silently inherits Streamlit's own
-   base theme text color (which can end up the same as our card
-   background). Any of our own classes/inline styles below (all of which
-   use a class selector or higher) still win over this on specificity
-   alone, important or not, so this only fills genuine gaps. */
+/* ---------- TEXT COLOR SAFETY NET ---------- */
 p, li, span, label, div, a {
-    color: var(--text) !important;
+    color: var(--text);
 }
 
 /* ---------- SIDEBAR (always dark canopy, regardless of theme) ---------- */
@@ -359,7 +373,6 @@ section[data-testid="stSidebar"] hr {
     margin: 4px 0 8px 2px;
 }
 
-/* Vertical nav rail, built from a radio group */
 section[data-testid="stSidebar"] div[role="radiogroup"] {
     flex-direction: column;
     gap: 6px;
@@ -517,9 +530,6 @@ section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked)
     box-sizing: border-box;
 }
 
-/* Real Streamlit containers (st.container(key=...)) sharing the "card-"
-   key prefix all get the same card treatment applied to the actual
-   wrapping element Streamlit renders. */
 div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-card-"],
 div[data-testid="stVerticalBlock"][class*="st-key-card-"],
 div[class*="st-key-card-"] {
@@ -532,7 +542,6 @@ div[class*="st-key-card-"] {
     box-sizing: border-box;
 }
 
-/* Quick-action / nav cards get a hover lift */
 div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-qa-"],
 div[data-testid="stVerticalBlock"][class*="st-key-qa-"],
 div[class*="st-key-qa-"] {
@@ -645,10 +654,20 @@ div[class*="st-key-qa-"]:hover {
 [data-testid="stMarkdownContainer"] span:not(.legend-dot),
 [data-testid="stCaptionContainer"] p,
 .stRadio label p,
-div[data-testid="stFileUploaderDropzone"] *,
-div[data-testid="stAlert"] p,
-div[data-testid="stTextInput"] label p {
+div[data-testid="stAlert"] p {
+    color: var(--text);
+}
+
+label,
+[data-testid="stWidgetLabel"],
+[data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] span,
+div[data-testid="stTextInput"] label,
+div[data-testid="stTextInput"] label p,
+div[data-testid="stFileUploader"] label,
+div[data-testid="stFileUploader"] label p {
     color: var(--text) !important;
+    font-weight: 600;
 }
 
 .hero *, section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
@@ -720,24 +739,37 @@ hr { margin: 1.6rem 0; border-color: var(--border) !important; }
     border-radius: 999px;
 }
 
-.stButton > button {
+/* BUTTONS & FORM SUBMIT BUTTONS FIX */
+.stButton > button,
+.stFormSubmitButton > button,
+div[data-testid="stFormSubmitButton"] > button {
     background: linear-gradient(135deg, var(--leaf), var(--sprout)) !important;
     color: #FFFFFF !important;
-    border: none;
-    border-radius: 999px;
-    padding: 10px 26px;
-    font-weight: 600;
+    border: none !important;
+    border-radius: 999px !important;
+    padding: 10px 26px !important;
+    font-weight: 600 !important;
     box-shadow: var(--shadow-sm);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.stButton > button:hover {
+.stButton > button:hover,
+.stFormSubmitButton > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover {
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
     color: #FFFFFF !important;
+    background: linear-gradient(135deg, var(--forest), var(--leaf)) !important;
 }
-.stButton > button:focus-visible {
+.stButton > button:focus-visible,
+.stFormSubmitButton > button:focus-visible,
+div[data-testid="stFormSubmitButton"] > button:focus-visible {
     outline: 2px solid var(--sprout);
     outline-offset: 2px;
+}
+.stButton > button *,
+.stFormSubmitButton > button *,
+div[data-testid="stFormSubmitButton"] > button * {
+    color: #FFFFFF !important;
 }
 
 div[data-testid="stFileUploaderDropzone"] {
@@ -783,19 +815,69 @@ div[data-testid="stFileUploaderDropzone"] svg {
     fill: var(--heading) !important;
 }
 
+/* FORM INPUTS & DISABLED INPUT FIX */
 div[data-testid="stTextInput"] input {
     background: var(--input-bg) !important;
     color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
     border: 1px solid var(--border) !important;
+}
+
+div[data-testid="stTextInput"] input::placeholder {
+    color: var(--muted) !important;
+    -webkit-text-fill-color: var(--muted) !important;
+}
+
+div[data-testid="stTextInput"] input:disabled,
+div[data-testid="stTextInput"] input[disabled] {
+    background: var(--surface-alt) !important;
+    color: var(--text) !important;
+    -webkit-text-fill-color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+    opacity: 0.85 !important;
+    cursor: not-allowed !important;
+}
+
+/* PASSWORD EYE ICON CONTROLS FIX */
+div[data-testid="stTextInput"] button,
+div[data-baseweb="input"] button,
+button[aria-label*="password"],
+button[aria-label*="Password"],
+button[aria-label*="show password"],
+button[aria-label*="hide password"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text) !important;
+    opacity: 0.75 !important;
+    padding: 0 8px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+div[data-testid="stTextInput"] button:hover,
+div[data-baseweb="input"] button:hover,
+button[aria-label*="password"]:hover,
+button[aria-label*="Password"]:hover {
+    opacity: 1 !important;
+    background: transparent !important;
+}
+
+div[data-testid="stTextInput"] button svg,
+div[data-baseweb="input"] button svg,
+button[aria-label*="password"] svg,
+button[aria-label*="Password"] svg {
+    fill: var(--text) !important;
+    color: var(--text) !important;
+    stroke: var(--text) !important;
+    width: 18px !important;
+    height: 18px !important;
 }
 
 img { border-radius: var(--radius-sm); max-width: 100%; }
 
-/* Chart / photo panels are framed directly on the image element itself
-   (never on a wrapping container) — this is what actually renders the
-   card look for st.image()/st.pyplot() output, deliberately avoiding
-   st.container(key=...) around them, which is prone to leaving a stray
-   empty bordered box above the real content. */
 div[data-testid="stImage"] img {
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
@@ -807,14 +889,37 @@ div[data-testid="stImage"] img {
     background: linear-gradient(90deg, var(--leaf), var(--sprout));
 }
 
-/* Toggle label readability in Settings */
 [data-testid="stWidgetLabel"] p { color: var(--text) !important; }
 
-/* Alerts / Callouts theme adherence */
 div[data-testid="stAlert"] {
     background: var(--surface) !important;
     border: 1px solid var(--border) !important;
 }
+
+
+/* ---------- PROFILE / AVATAR FIXES ---------- */
+.profile-hero { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:var(--radius-lg)!important; padding:24px 26px!important; box-shadow:var(--shadow-sm)!important; margin-bottom:18px!important; }
+.profile-meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+.profile-meta-item { background:var(--surface-alt)!important; border:1px solid var(--border)!important; border-radius:999px!important; padding:7px 12px!important; font-size:12.5px!important; color:var(--text)!important; }
+.profile-avatar-default { width:118px; height:118px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:58px; background:linear-gradient(135deg,#D8F3DC,#B7E4C7)!important; border:3px solid var(--surface)!important; box-shadow:0 8px 24px rgba(27,67,50,.16)!important; overflow:hidden; }
+.profile-avatar-image { width:118px!important; height:118px!important; border-radius:50%!important; overflow:hidden!important; display:inline-block!important; }
+.profile-avatar-image div[data-testid="stImage"] { background:transparent!important; border:none!important; box-shadow:none!important; width:118px!important; height:118px!important; border-radius:50%!important; overflow:hidden!important; margin:0!important; padding:0!important; }
+.profile-avatar-image img, .profile-avatar-image div[data-testid="stImage"] img { width:118px!important; height:118px!important; object-fit:cover!important; border-radius:50%!important; border:3px solid var(--surface)!important; box-shadow:0 8px 24px rgba(27,67,50,.16)!important; background:transparent!important; margin:0!important; padding:0!important; }
+
+/* ---------- CLEAN DISEASE INSIGHTS ---------- */
+.disease-insights-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:18px; }
+.disease-list-card { background:var(--surface)!important; border:1px solid var(--border)!important; border-radius:var(--radius-md)!important; padding:20px!important; box-shadow:var(--shadow-sm)!important; }
+.disease-list-heading { font-family:'Poppins',sans-serif; font-weight:700; font-size:17px; color:var(--heading)!important; margin-bottom:12px; }
+.disease-list-item { display:flex; align-items:flex-start; gap:10px; padding:11px 0; border-bottom:1px solid var(--border)!important; color:var(--text)!important; line-height:1.55; }
+.disease-list-item:last-child { border-bottom:none!important; padding-bottom:0; }
+.disease-list-icon { flex:0 0 auto; color:var(--sprout)!important; font-weight:700; }
+
+/* ---------- STREAMLIT WIDGET TEXT SAFETY ---------- */
+.stFormSubmitButton > button, .stFormSubmitButton > button *, [data-testid="stCameraInput"] button, [data-testid="stCameraInput"] button *, [data-testid="stFileUploaderDropzone"] button, [data-testid="stFileUploaderDropzone"] button * { color:#FFFFFF!important; }
+[data-testid="stTabs"] button, [data-testid="stTabs"] button * { color:var(--text)!important; }
+[data-testid="stTabs"] button[aria-selected="true"], [data-testid="stTabs"] button[aria-selected="true"] * { color:var(--heading)!important; font-weight:700!important; }
+[data-testid="stTextInput"] label, [data-testid="stTextInput"] label *, [data-testid="stCameraInput"] label, [data-testid="stCameraInput"] label * { color:var(--text)!important; }
+@media (max-width:768px) { .disease-insights-grid { grid-template-columns:1fr; } }
 
 /* ---------- MOBILE TAP RELIABILITY ---------- */
 button,
@@ -835,7 +940,6 @@ div[data-testid="stToggle"] * {
 
 /* ---------- MOBILE RESPONSIVE ADAPTATIONS (<= 768px) ---------- */
 @media (max-width: 768px) {
-    /* Prevent root-level horizontal overflow */
     html, body, .stApp, [data-testid="stAppViewContainer"] {
         overflow-x: hidden !important;
         max-width: 100vw !important;
@@ -849,7 +953,6 @@ div[data-testid="stToggle"] * {
         max-width: 100% !important;
     }
 
-    /* Mobile header & sidebar controls */
     header[data-testid="stHeader"] {
         background: transparent !important;
         display: block !important;
@@ -869,7 +972,6 @@ div[data-testid="stToggle"] * {
         z-index: 1000001 !important;
     }
 
-    /* Streamlit columns stack vertically in main content */
     [data-testid="stMain"] div[data-testid="stHorizontalBlock"],
     .main div[data-testid="stHorizontalBlock"],
     div[data-testid="stAppViewContainer"] .main div[data-testid="stHorizontalBlock"] {
@@ -888,7 +990,6 @@ div[data-testid="stToggle"] * {
         flex: 1 1 100% !important;
     }
 
-    /* Topbar responsive adjustments */
     .topbar {
         flex-direction: column !important;
         align-items: flex-start !important;
@@ -931,7 +1032,6 @@ div[data-testid="stToggle"] * {
         font-size: 9.5px !important;
     }
 
-    /* Hero section */
     .hero {
         padding: 24px 18px !important;
         margin-bottom: 18px !important;
@@ -960,7 +1060,6 @@ div[data-testid="stToggle"] * {
         max-width: 100% !important;
     }
 
-    /* Section titles & subtitles */
     .section-title {
         font-size: 18px !important;
         word-break: break-word !important;
@@ -971,7 +1070,6 @@ div[data-testid="stToggle"] * {
         margin-bottom: 14px !important;
     }
 
-    /* Generic cards & Streamlit container cards */
     .gcard,
     div[class*="st-key-card-"],
     div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-card-"],
@@ -985,7 +1083,6 @@ div[data-testid="stToggle"] * {
         max-width: 100% !important;
     }
 
-    /* Result Card */
     .result-card {
         padding: 20px 16px !important;
         border-radius: var(--radius-md) !important;
@@ -1012,7 +1109,6 @@ div[data-testid="stToggle"] * {
         font-size: 14px !important;
     }
 
-    /* Stat chips */
     .stat-chip {
         padding: 12px 10px !important;
         box-sizing: border-box !important;
@@ -1027,7 +1123,6 @@ div[data-testid="stToggle"] * {
         font-size: 10.5px !important;
     }
 
-    /* Prediction History */
     .hist-row {
         flex-direction: column !important;
         align-items: flex-start !important;
@@ -1060,7 +1155,6 @@ div[data-testid="stToggle"] * {
         align-self: flex-start !important;
     }
 
-    /* Images and charts */
     img,
     div[data-testid="stImage"],
     div[data-testid="stImage"] img,
@@ -1072,7 +1166,6 @@ div[data-testid="stToggle"] * {
         box-sizing: border-box !important;
     }
 
-    /* Buttons & Inputs */
     .stButton > button {
         width: 100% !important;
         padding: 10px 18px !important;
@@ -1106,7 +1199,6 @@ div[data-testid="stToggle"] * {
         font-size: 13px !important;
     }
 
-    /* Mobile Navigation Button & Drawer */
     div[class*="st-key-mobile-nav-container"],
     div[data-testid="stVerticalBlockBorderWrapper"][class*="st-key-mobile-nav-container"],
     div[data-testid="stVerticalBlock"][class*="st-key-mobile-nav-container"] {
@@ -1181,21 +1273,12 @@ NAV_ITEMS = [
     "🔥 Grad-CAM Heatmap",
     "🌦️ Weather & Risk",
     "📋 Guidelines",
-    "👤 My Profile",
+    "🧑‍🌾 My Profile",
     "⚙️ Settings",
 ]
 
 
 def go_to(nav_label):
-    """Programmatically switch the active sidebar page and rerun.
-
-    The sidebar's radio widget (key="nav_radio") is already instantiated
-    earlier in this same script run by the time a button elsewhere calls
-    this, and Streamlit does not allow writing to a widget's key after
-    it has been instantiated in the same run. So we stash the request in
-    a separate key and apply it to "nav_radio" at the very top of the
-    *next* run, before the widget is created.
-    """
     st.session_state["pending_nav"] = nav_label
     st.session_state["mobile_menu_open"] = False
     st.rerun()
@@ -1210,7 +1293,6 @@ def topbar(icon, title, subtitle, history):
     if "mobile_menu_open" not in st.session_state:
         st.session_state["mobile_menu_open"] = False
 
-    # Mobile navigation control — visible only on mobile (<= 768px), hidden on desktop
     with st.container(key="mobile-nav-container"):
         is_open = st.session_state.get("mobile_menu_open", False)
         toggle_icon = "▲" if is_open else "▼"
@@ -1296,9 +1378,6 @@ history = get_user_predictions(st.session_state["user_id"])
 # SIDEBAR
 # ==================================================
 
-# Apply any pending programmatic navigation request BEFORE the nav_radio
-# widget below is instantiated (see go_to() above for why this two-step
-# hand-off is necessary).
 if "pending_nav" in st.session_state:
     st.session_state["nav_radio"] = st.session_state.pop("pending_nav")
 
@@ -1452,19 +1531,14 @@ def render_home(history):
         )
 
         if is_healthy:
-
             card_class = "healthy"
             result_icon = "🟢"
             status_text = "No disease detected"
-
         elif is_uncertain:
-
             card_class = "diseased"
             result_icon = "🟠"
             status_text = "Prediction uncertain"
-
         else:
-
             card_class = "diseased"
             result_icon = "🔴"
             status_text = "Disease detected"
@@ -1514,9 +1588,6 @@ def render_disease_detection(history):
 
     if image_file is not None:
 
-        # ----------------------------------------------
-        # Run (or reuse) the AI pipeline for this image
-        # ----------------------------------------------
         image_bytes = image_file.getvalue()
         image_hash = hashlib.md5(image_bytes).hexdigest()
 
@@ -1535,7 +1606,7 @@ def render_disease_detection(history):
             with st.spinner("Analyzing leaf..."):
                 result, confidence, predictions = predict_leaf(image_path)
 
-            save_prediction(st.session_state["user_id"],image_path, result, confidence)
+            save_prediction(st.session_state["user_id"], image_path, result, confidence)
 
             with st.spinner("Generating AI visual.."):
                 gradcam_image = make_gradcam(image_path)
@@ -1571,19 +1642,14 @@ def render_disease_detection(history):
             )
 
             if is_healthy:
-
                 result_icon = "🟢"
                 card_class = "healthy"
                 status_text = "No disease detected"
-
             elif is_uncertain:
-
                 result_icon = "🟠"
                 card_class = "diseased"
                 status_text = "Prediction uncertain"
-
             else:
-
                 result_icon = "🔴"
                 card_class = "diseased"
                 status_text = "Disease detected"
@@ -1618,25 +1684,29 @@ def render_disease_detection(history):
                     unsafe_allow_html=True
                 )
 
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.markdown(
-                        '<div class="section-title" style="font-size:18px;">🔎 Possible Causes</div>',
-                        unsafe_allow_html=True
-                    )
-
-                    for cause in disease["causes"]:
-                        st.markdown(f"• {cause}")
-
-                with col2:
-                    st.markdown(
-                        '<div class="section-title" style="font-size:18px;">🛡️ Precautions</div>',
-                        unsafe_allow_html=True
-                    )
-
-                    for precaution in disease["precautions"]:
-                        st.markdown(f"• {precaution}")
+                causes_html = "".join(
+                    f'<div class="disease-list-item"><span class="disease-list-icon">•</span><span>{cause}</span></div>'
+                    for cause in disease["causes"]
+                )
+                precautions_html = "".join(
+                    f'<div class="disease-list-item"><span class="disease-list-icon">✓</span><span>{precaution}</span></div>'
+                    for precaution in disease["precautions"]
+                )
+                st.markdown(
+                    f"""
+                    <div class="disease-insights-grid">
+                        <div class="disease-list-card">
+                            <div class="disease-list-heading">🔎 Possible Causes</div>
+                            {causes_html}
+                        </div>
+                        <div class="disease-list-card">
+                            <div class="disease-list-heading">🛡️ Precautions</div>
+                            {precautions_html}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
                     
         st.write("")
@@ -1690,75 +1760,50 @@ def render_confidence_graph(history):
 
     graph1, graph2 = st.columns(2)
 
-    # ---------------- GRAPH 1 — PREDICTION PROBABILITY ----------------
-# ---------------- GRAPH 1 — ALL CLASS PROBABILITIES ----------------
-
     with graph1:
 
         st.markdown(
-        '<div class="section-title" style="font-size:17px;">🧠 Class Probabilities</div>',
-        unsafe_allow_html=True
-    )
+            '<div class="section-title" style="font-size:17px;">🧠 Class Probabilities</div>',
+            unsafe_allow_html=True
+        )
 
         probabilities = [
-        float(p) * 100
-        for p in predictions
-    ]
+            float(p) * 100
+            for p in predictions
+        ]
 
-        fig1, ax1 = plt.subplots(
-        figsize=(7, 4.5)
-    )
+        fig1, ax1 = plt.subplots(figsize=(7, 4.5))
 
         bars = ax1.barh(
-        CLASS_NAMES,
-        probabilities,
-        color=SPROUT,
-        zorder=3
-    )
+            CLASS_NAMES,
+            probabilities,
+            color=SPROUT,
+            zorder=3
+        )
 
         ax1.invert_yaxis()
-
         ax1.set_xlim(0, 100)
-
-        ax1.set_xlabel(
-        "Probability (%)"
-    )
-
-        ax1.grid(
-        axis="x",
-        alpha=0.25,
-        zorder=0
-    )
-
+        ax1.set_xlabel("Probability (%)")
+        ax1.grid(axis="x", alpha=0.25, zorder=0)
         ax1.set_axisbelow(True)
 
-        for bar, value in zip(
-        bars,
-        probabilities
-    ):
-
+        for bar, value in zip(bars, probabilities):
             ax1.text(
-            value + 1,
-            bar.get_y() + bar.get_height() / 2,
-            f"{value:.2f}%",
-            va="center",
-            fontweight="bold",
-            color=GRAPH_ACCENT
-        )
+                value + 1,
+                bar.get_y() + bar.get_height() / 2,
+                f"{value:.2f}%",
+                va="center",
+                fontweight="bold",
+                color=GRAPH_ACCENT
+            )
 
         for spine in ["top", "right", "left"]:
             ax1.spines[spine].set_visible(False)
 
         plt.tight_layout()
-
-        st.pyplot(
-        fig1,
-        transparent=True
-    )
-
+        st.pyplot(fig1, transparent=True)
         plt.close(fig1)
 
-    # ---------------- GRAPH 2 — CONFIDENCE LINE GRAPH ----------------
     with graph2:
         st.markdown('<div class="section-title" style="font-size:17px;">🎯 Model Confidence</div>', unsafe_allow_html=True)
 
@@ -1877,9 +1922,6 @@ def render_gradcam_heatmap(history):
 def render_weather_risk(history):
     topbar("🌦️", "Weather & Risk", "Live conditions and plant-care guidance for your location.", history)
 
-    # Page-scoped spacing fixes for this page only. These rules are only
-    # ever injected while render_weather_risk() is on screen, so no other
-    # page's layout is affected.
     st.markdown(
         """
         <style>
@@ -1887,8 +1929,6 @@ def render_weather_risk(history):
         .weather-spacer.sm { height: 10px; }
         .weather-spacer.md { height: 20px; }
         .weather-spacer.lg { height: 28px; }
-        /* Let the topbar stats wrap onto a new line instead of
-           crowding/overlapping on narrower windows. */
         .topbar-stats {
             flex-wrap: wrap;
             row-gap: 10px;
@@ -1902,16 +1942,13 @@ def render_weather_risk(history):
         unsafe_allow_html=True,
     )
 
-    # Header → Weather section
     st.markdown('<div class="weather-spacer md"></div>', unsafe_allow_html=True)
-
     st.markdown('<div class="section-title">🌦️ Local Weather & Plant Risk</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-sub">Get current weather from the weather API and receive plant-care recommendations based on the conditions.</div>',
         unsafe_allow_html=True
     )
 
-    # Section heading → Location input/button
     st.markdown('<div class="weather-spacer sm"></div>', unsafe_allow_html=True)
 
     weather_col1, weather_col2 = st.columns([2, 1])
@@ -1946,7 +1983,6 @@ def render_weather_risk(history):
         current_weather = st.session_state["current_weather"]
         weather_analysis = st.session_state["weather_analysis"]
 
-        # Location row → Weather cards
         st.markdown('<div class="weather-spacer lg"></div>', unsafe_allow_html=True)
 
         weather_cards = st.columns(5)
@@ -1969,7 +2005,6 @@ def render_weather_risk(history):
                     unsafe_allow_html=True
                 )
 
-        # Weather cards → Risk/recommendation section
         st.markdown('<div class="weather-spacer lg"></div>', unsafe_allow_html=True)
 
         risk_level = weather_analysis.get("risk_level", "LOW")
@@ -2106,8 +2141,6 @@ def render_guidelines(history):
         st.markdown(legend_html, unsafe_allow_html=True)
 
 
-
-
 # ==================================================
 # PAGE: MY PROFILE
 # ==================================================
@@ -2115,7 +2148,7 @@ def render_guidelines(history):
 def render_my_profile(history):
     user_id = st.session_state["user_id"]
     topbar(
-        "👤",
+        "🧑‍🌾",
         "My Profile",
         "Manage your account, security, prediction history, and session.",
         history
@@ -2132,26 +2165,34 @@ def render_my_profile(history):
     account_id = profile["id"]
     created_at = profile.get("created_at")
 
-    member_line = (
-        f"<div><b>Member since:</b> {created_at}</div>"
-        if created_at else ""
-    )
+    st.markdown('<div class="profile-hero">', unsafe_allow_html=True)
+    avatar_col, details_col = st.columns([1, 5], vertical_alignment="center")
+    with avatar_col:
+        profile_bytes = st.session_state.get("profile_image_bytes")
+        if profile_bytes:
+            try:
+                st.markdown('<div class="profile-avatar-image">', unsafe_allow_html=True)
+                st.image(io.BytesIO(profile_bytes), width=118)
+                st.markdown('</div>', unsafe_allow_html=True)
+            except Exception:
+                st.markdown('<div class="profile-avatar-default">👨‍🌾</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="profile-avatar-default">👨‍🌾</div>', unsafe_allow_html=True)
 
-    st.markdown(
-        f"""
-        <div class="gcard" style="margin-bottom:18px;">
-            <div style="font-size:34px; margin-bottom:8px;">👤</div>
-            <div class="section-title" style="margin-bottom:6px;">{user_name}</div>
-            <div class="section-sub" style="margin-bottom:14px;">{user_email}</div>
-            <div style="display:flex; gap:24px; flex-wrap:wrap; font-size:13px;">
-                <div><b>User ID:</b> #{account_id}</div>
-                <div><b>Status:</b> Active</div>
-                {member_line}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    with details_col:
+        st.markdown(f'<div class="section-title" style="margin-bottom:6px;">{user_name}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-sub" style="margin-bottom:0;">{user_email}</div>', unsafe_allow_html=True)
+        member_meta = f'<div class="profile-meta-item"><b>Member since:</b> {created_at}</div>' if created_at else ''
+        st.markdown(
+            f"""<div class="profile-meta">
+                <div class="profile-meta-item"><b>User ID:</b> #{account_id}</div>
+                <div class="profile-meta-item"><b>Status:</b> Active</div>
+                {member_meta}
+            </div>""",
+            unsafe_allow_html=True
+        )
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
     tab_account, tab_security, tab_history = st.tabs(
         ["📝 Account", "🔐 Security", "📜 Prediction History"]
@@ -2159,6 +2200,60 @@ def render_my_profile(history):
 
     with tab_account:
         with st.container(key="card-profile-account"):
+            st.markdown('<div class="section-title" style="font-size:18px;">Profile Photo</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-sub">Use the default farmer avatar, upload your own photo, or take one with your camera.</div>', unsafe_allow_html=True)
+            photo_method = st.radio(
+                "Profile photo source",
+                ["👨‍🌾 Default Avatar", "📁 Upload Image", "📷 Use Camera"],
+                horizontal=True,
+                key="profile_photo_method",
+                label_visibility="collapsed"
+            )
+            if photo_method == "📁 Upload Image":
+                profile_photo = st.file_uploader(
+                    "Upload profile image",
+                    type=["jpg", "jpeg", "png", "webp"],
+                    key="profile_photo_upload"
+                )
+
+                if profile_photo is not None:
+                    raw_bytes = profile_photo.getvalue()
+                    img_hash = hashlib.md5(raw_bytes).hexdigest()
+                    if img_hash != st.session_state.get("profile_image_hash"):
+                        opt_bytes = process_profile_image(raw_bytes)
+                        if opt_bytes:
+                            st.session_state["profile_image_bytes"] = opt_bytes
+                            st.session_state["profile_image_hash"] = img_hash
+                            st.success("Profile photo updated.")
+                            st.rerun()
+                        else:
+                            st.error("Invalid or corrupted image file.")
+            elif photo_method == "📷 Use Camera":
+                profile_photo = st.camera_input(
+                    "Take a profile photo",
+                    key="profile_photo_camera"
+                )
+
+                if profile_photo is not None:
+                    raw_bytes = profile_photo.getvalue()
+                    img_hash = hashlib.md5(raw_bytes).hexdigest()
+                    if img_hash != st.session_state.get("profile_image_hash"):
+                        opt_bytes = process_profile_image(raw_bytes)
+                        if opt_bytes:
+                            st.session_state["profile_image_bytes"] = opt_bytes
+                            st.session_state["profile_image_hash"] = img_hash
+                            st.success("Profile photo updated.")
+                            st.rerun()
+                        else:
+                            st.error("Invalid or corrupted image file.")
+            else:
+                if st.session_state.get("profile_image_bytes") is not None:
+                    if st.button("↩️ Use Default Farmer Avatar", key="profile_reset_avatar_btn"):
+                        st.session_state["profile_image_bytes"] = None
+                        st.session_state["profile_image_hash"] = None
+                        st.rerun()
+
+            st.markdown("<hr>", unsafe_allow_html=True)
             st.markdown(
                 '<div class="section-title" style="font-size:18px;">Account Details</div>',
                 unsafe_allow_html=True
@@ -2335,6 +2430,8 @@ def render_my_profile(history):
                 "gradcam_image",
                 "current_weather",
                 "weather_analysis",
+                "profile_image_bytes",
+                "profile_image_hash",
                 "pending_nav",
                 "nav_radio",
             ]
@@ -2405,7 +2502,7 @@ elif active_page == "🌦️ Weather & Risk":
     render_weather_risk(history)
 elif active_page == "📋 Guidelines":
     render_guidelines(history)
-elif active_page == "👤 My Profile":
+elif active_page == "🧑‍🌾 My Profile":
     render_my_profile(history)
 elif active_page == "⚙️ Settings":
     render_settings(history)
