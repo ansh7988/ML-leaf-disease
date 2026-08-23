@@ -4,10 +4,12 @@ import psycopg
 from dotenv import load_dotenv
 
 load_dotenv()
+
 def get_connection():
-    return psycopg.connect(
-        st.secrets["DATABASE_URL"]
-    )
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url: database_url = st.secrets["DATABASE_URL"]
+
+    return psycopg.connect(database_url)
 
 def get_users():
     conn = get_connection()

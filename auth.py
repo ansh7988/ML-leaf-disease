@@ -680,10 +680,10 @@ def show_auth():
                         if not name.strip() or not email.strip() or not password:
                             st.warning("Please fill in all fields to create your account.")
                         else:
-                            user(
+                            create_user(
                                 name.strip(),
                                 email.strip(),
-                                passwcreate_ord
+                                password
                             )
                             st.success("Account created successfully! Switch to Sign In to access your account.")
 if __name__ == "__main__":
